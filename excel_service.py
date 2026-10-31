@@ -374,8 +374,15 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
     ws_matched.views.sheetView[0].showGridLines = True
     
     matched_headers = [
-        "Row", "Exam", "Roll No", "Student Full Name", 
-        "Registered Center", "Total Marks", "Student Phone", "Parent Phone", "Group / Attendance"
+        "م", 
+        "اسم الطالب (Student Name)", 
+        "رقم الطالب (Student Number)", 
+        "رقم ولي الامر (Parent Phone)", 
+        "الدرجة (Uploaded Grade)", 
+        "الدرجة النهائية (Final Grade)", 
+        "النموذج (Exam Model)", 
+        "السنتر المسجل به (Center)", 
+        "المجموعة (Group)"
     ]
     for col_num, h_text in enumerate(matched_headers, 1):
         cell = ws_matched.cell(row=1, column=col_num, value=h_text)
@@ -387,21 +394,21 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
     for r_idx, item in enumerate(match_result.get("matched", []), start=2):
         m = item.get("master_student", {})
         row_vals = [
-            item.get("row_index"),
+            item.get("row_index") or (r_idx - 1),
+            m.get("full_name") or "Unknown",
+            m.get("phone") or m.get("student_number") or item.get("roll_no") or item.get("extracted_6_digits"),
+            m.get("parent_phone") or "",
+            item.get("score") or "",
+            "", # Final Grade empty column for grading
             item.get("exam_model", "Exam"),
-            item.get("roll_no") or item.get("extracted_6_digits"),
-            m.get("full_name"),
-            m.get("center_name"),
-            item.get("score"),
-            m.get("phone") or m.get("student_number"),
-            m.get("parent_phone"),
-            m.get("group_name")
+            m.get("center_name") or "",
+            m.get("group_name") or ""
         ]
         for c_idx, val in enumerate(row_vals, 1):
             c = ws_matched.cell(row=r_idx, column=c_idx, value=val)
             c.font = regular_font
             c.border = thin_border
-            if c_idx in [1, 2, 3, 6]:
+            if c_idx in [1, 3, 4, 5, 6, 7]:
                 c.alignment = Alignment(horizontal="center")
 
     # ----------------- SHEET 3: Discrepancies - Unmatched -----------------
@@ -409,8 +416,14 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
     ws_unmatched.views.sheetView[0].showGridLines = True
     
     unmatched_headers = [
-        "Sheet Row", "Exam", "Roll No (Scanned)", 
-        "Total Marks", "Discrepancy Warning"
+        "م", 
+        "اسم الطالب (Student Name)", 
+        "رقم الطالب (Student Number)", 
+        "رقم ولي الامر (Parent Phone)", 
+        "الدرجة (Uploaded Grade)", 
+        "الدرجة النهائية (Final Grade)", 
+        "النموذج (Exam Model)", 
+        "ملاحظات وتنبيه (Warning)"
     ]
     for col_num, h_text in enumerate(unmatched_headers, 1):
         cell = ws_unmatched.cell(row=1, column=col_num, value=h_text)
@@ -421,19 +434,22 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
         
     for r_idx, item in enumerate(match_result.get("unmatched", []), start=2):
         row_vals = [
-            item.get("row_index"),
+            item.get("row_index") or (r_idx - 1),
+            item.get("scanned_name") or "طالب غير مسجل (Not in DB)",
+            item.get("roll_no") or item.get("raw_code") or item.get("extracted_6_digits"),
+            item.get("parent_phone") or "",
+            item.get("score") or "",
+            "", # Final Grade empty column
             item.get("exam_model", "Exam"),
-            item.get("roll_no") or item.get("raw_code"),
-            item.get("score"),
-            f"Roll No '{item.get('roll_no') or item.get('raw_code')}' NOT found in Master Database!"
+            f"رقم '{item.get('roll_no') or item.get('raw_code')}' غير مسجل بقاعدة البيانات الرئيسية!"
         ]
         for c_idx, val in enumerate(row_vals, 1):
             c = ws_unmatched.cell(row=r_idx, column=c_idx, value=val)
             c.font = regular_font
             c.border = thin_border
-            if c_idx in [1, 2, 3, 4]:
+            if c_idx in [1, 3, 4, 5, 6, 7]:
                 c.alignment = Alignment(horizontal="center")
-            if c_idx == 5:
+            if c_idx == 8:
                 c.font = bold_font
                 c.fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
 
@@ -442,8 +458,15 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
     ws_wrong.views.sheetView[0].showGridLines = True
     
     wrong_headers = [
-        "Sheet Row", "Exam", "Roll No", "Student Name", "Exam Center Scanned At", 
-        "Official Registered Center (Col G)", "Total Marks", "Student Phone", "Parent Phone"
+        "م", 
+        "اسم الطالب (Student Name)", 
+        "رقم الطالب (Student Number)", 
+        "رقم ولي الامر (Parent Phone)", 
+        "الدرجة (Uploaded Grade)", 
+        "الدرجة النهائية (Final Grade)", 
+        "النموذج (Exam Model)", 
+        "سنتر الامتحان الفعلي (Scanned Center)", 
+        "السنتر المسجل به رسمياً (Official Center)"
     ]
     for col_num, h_text in enumerate(wrong_headers, 1):
         cell = ws_wrong.cell(row=1, column=col_num, value=h_text)
@@ -455,28 +478,39 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
     for r_idx, item in enumerate(match_result.get("wrong_center", []), start=2):
         m = item.get("master_student", {})
         row_vals = [
-            item.get("row_index"),
+            item.get("row_index") or (r_idx - 1),
+            m.get("full_name") or "Unknown",
+            m.get("phone") or m.get("student_number") or item.get("roll_no") or item.get("extracted_6_digits"),
+            m.get("parent_phone") or "",
+            item.get("score") or "",
+            "", # Final Grade empty column
             item.get("exam_model", "Exam"),
-            item.get("roll_no") or item.get("extracted_6_digits"),
-            m.get("full_name"),
-            summary.get("selected_center"),
-            m.get("center_name"),
-            item.get("score"),
-            m.get("phone") or m.get("student_number"),
-            m.get("parent_phone")
+            summary.get("selected_center") or "",
+            m.get("center_name") or ""
         ]
         for c_idx, val in enumerate(row_vals, 1):
             c = ws_wrong.cell(row=r_idx, column=c_idx, value=val)
             c.font = regular_font
             c.border = thin_border
-            if c_idx in [1, 2, 3, 7]:
+            if c_idx in [1, 3, 4, 5, 6, 7]:
                 c.alignment = Alignment(horizontal="center")
 
     # ----------------- SHEET 5: Absent Students -----------------
     ws_absent = wb.create_sheet(title="Absent Students")
     ws_absent.views.sheetView[0].showGridLines = True
     
-    absent_headers = ["Student Number", "Last 6 Digits", "Full Name", "Center", "Student Phone", "Parent Phone", "Seat", "Group"]
+    absent_headers = [
+        "م", 
+        "اسم الطالب (Student Name)", 
+        "رقم الطالب (Student Number)", 
+        "رقم ولي الامر (Parent Phone)", 
+        "الدرجة (Uploaded Grade)", 
+        "الدرجة النهائية (Final Grade)", 
+        "السنتر المسجل به (Center)", 
+        "كود الطالب (Last 6 Digits)", 
+        "رقم الجلوس (Seat)", 
+        "المجموعة (Group)"
+    ]
     for col_num, h_text in enumerate(absent_headers, 1):
         cell = ws_absent.cell(row=1, column=col_num, value=h_text)
         cell.font = header_font
@@ -486,19 +520,23 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
         
     for r_idx, s in enumerate(match_result.get("absent", []), start=2):
         row_vals = [
-            s.get("student_number"),
-            s.get("last_6_digits"),
-            s.get("full_name"),
-            s.get("center_name"),
-            s.get("phone") or s.get("student_number"),
-            s.get("parent_phone"),
-            s.get("seat_number"),
-            s.get("group_name")
+            r_idx - 1,
+            s.get("full_name") or "Unknown",
+            s.get("student_number") or s.get("phone") or "",
+            s.get("parent_phone") or "",
+            "غائب (Absent)",
+            "", # Final Grade empty column
+            s.get("center_name") or "",
+            s.get("last_6_digits") or "",
+            s.get("seat_number") or "",
+            s.get("group_name") or ""
         ]
         for c_idx, val in enumerate(row_vals, 1):
             c = ws_absent.cell(row=r_idx, column=c_idx, value=val)
             c.font = regular_font
             c.border = thin_border
+            if c_idx in [1, 3, 4, 5, 6, 8, 9]:
+                c.alignment = Alignment(horizontal="center")
 
     # Adjust column widths for all sheets
     for ws in [ws_matched, ws_unmatched, ws_wrong, ws_absent]:
@@ -595,8 +633,16 @@ def generate_merged_center_excel(
     ws_all.views.sheetView[0].showGridLines = True
     
     headers_all = [
-        "Row", "Roll No", "Student Full Name", "Exam Model", 
-        "Total Marks", "Uploaded By Member", "Student Phone", "Parent Phone", "Official Center", "Status"
+        "م", 
+        "اسم الطالب (Student Name)", 
+        "رقم الطالب (Student Number)", 
+        "رقم ولي الامر (Parent Phone)", 
+        "الدرجة (Uploaded Grade)", 
+        "الدرجة النهائية (Final Grade)", 
+        "النموذج (Exam Model)", 
+        "اسم السنتر (Center)", 
+        "اسم رافع الملف (Uploaded By)", 
+        "حالة المطابقة (Status)"
     ]
     for c_idx, h in enumerate(headers_all, 1):
         cell = ws_all.cell(row=1, column=c_idx, value=h)
@@ -609,28 +655,38 @@ def generate_merged_center_excel(
     for r_idx, s in enumerate(matched_subs, 2):
         row_vals = [
             r_idx - 1,
-            s.get("roll_no") or s.get("extracted_6_digits"),
             s.get("student_name") or "Unknown",
-            s.get("exam_model"),
-            s.get("score"),
-            s.get("member_name"),
-            s.get("phone"),
-            s.get("parent_phone"),
-            s.get("registered_center"),
-            "Matched" if s.get("status") == "matched" else "Wrong Center"
+            s.get("phone") or s.get("roll_no") or s.get("extracted_6_digits"),
+            s.get("parent_phone") or "",
+            s.get("score") or "",
+            "", # Final Grade empty column for grading
+            s.get("exam_model") or "",
+            s.get("registered_center") or s.get("center_name") or "",
+            s.get("member_name") or "",
+            "مطابق (Matched)" if s.get("status") == "matched" else "سنتر مختلف (Wrong Center)"
         ]
         for c_idx, val in enumerate(row_vals, 1):
             c = ws_all.cell(row=r_idx, column=c_idx, value=val)
             c.font = regular_font
             c.border = thin_border
-            if c_idx in [1, 2, 4, 5]:
+            if c_idx in [1, 3, 4, 5, 6, 7, 10]:
                 c.alignment = Alignment(horizontal="center")
 
     # 3. Discrepancies (Unregistered Students)
     ws_unreg = wb.create_sheet(title="NOT in Master DB")
     ws_unreg.views.sheetView[0].showGridLines = True
     
-    headers_unreg = ["Row", "Roll No", "Exam Model", "Total Marks", "Uploaded By Member", "Warning"]
+    headers_unreg = [
+        "م", 
+        "اسم الطالب (Student Name)", 
+        "رقم الطالب (Student Number)", 
+        "رقم ولي الامر (Parent Phone)", 
+        "الدرجة (Uploaded Grade)", 
+        "الدرجة النهائية (Final Grade)", 
+        "النموذج (Exam Model)", 
+        "اسم رافع الملف (Uploaded By)", 
+        "تنبيه وملاحظات (Warning)"
+    ]
     for c_idx, h in enumerate(headers_unreg, 1):
         cell = ws_unreg.cell(row=1, column=c_idx, value=h)
         cell.font = header_font
@@ -642,17 +698,22 @@ def generate_merged_center_excel(
     for r_idx, s in enumerate(unreg_subs, 2):
         row_vals = [
             r_idx - 1,
-            s.get("roll_no"),
-            s.get("exam_model"),
-            s.get("score"),
-            s.get("member_name"),
-            f"Roll No '{s.get('roll_no')}' not found in Master Database!"
+            s.get("student_name") or "طالب غير مسجل (Not in DB)",
+            s.get("roll_no") or s.get("extracted_6_digits"),
+            s.get("parent_phone") or "",
+            s.get("score") or "",
+            "", # Final Grade empty column
+            s.get("exam_model") or "",
+            s.get("member_name") or "",
+            f"رقم '{s.get('roll_no')}' غير مسجل بقاعدة البيانات الرئيسية!"
         ]
         for c_idx, val in enumerate(row_vals, 1):
             c = ws_unreg.cell(row=r_idx, column=c_idx, value=val)
             c.font = regular_font
             c.border = thin_border
-            if c_idx == 6:
+            if c_idx in [1, 3, 4, 5, 6, 7]:
+                c.alignment = Alignment(horizontal="center")
+            if c_idx == 9:
                 c.font = bold_font
                 c.fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
 
@@ -660,7 +721,18 @@ def generate_merged_center_excel(
     ws_abs = wb.create_sheet(title="True Absent Students")
     ws_abs.views.sheetView[0].showGridLines = True
     
-    headers_abs = ["Full Name", "Student ID / Number", "Last 6 Digits", "Center", "Student Phone", "Parent Phone", "Seat", "Group"]
+    headers_abs = [
+        "م", 
+        "اسم الطالب (Student Name)", 
+        "رقم الطالب (Student Number)", 
+        "رقم ولي الامر (Parent Phone)", 
+        "الدرجة (Uploaded Grade)", 
+        "الدرجة النهائية (Final Grade)", 
+        "السنتر المسجل به (Center)", 
+        "كود الطالب (Last 6 Digits)", 
+        "رقم الجلوس (Seat)", 
+        "المجموعة (Group)"
+    ]
     for c_idx, h in enumerate(headers_abs, 1):
         cell = ws_abs.cell(row=1, column=c_idx, value=h)
         cell.font = header_font
@@ -670,19 +742,23 @@ def generate_merged_center_excel(
         
     for r_idx, s in enumerate(absent_students, 2):
         row_vals = [
-            s.get("full_name"),
-            s.get("student_number"),
-            s.get("last_6_digits"),
-            s.get("center_name"),
-            s.get("phone"),
-            s.get("parent_phone"),
-            s.get("seat_number"),
-            s.get("group_name")
+            r_idx - 1,
+            s.get("full_name") or "Unknown",
+            s.get("student_number") or s.get("phone") or "",
+            s.get("parent_phone") or "",
+            "غائب (Absent)",
+            "", # Final Grade empty column
+            s.get("center_name") or "",
+            s.get("last_6_digits") or "",
+            s.get("seat_number") or "",
+            s.get("group_name") or ""
         ]
         for c_idx, val in enumerate(row_vals, 1):
             c = ws_abs.cell(row=r_idx, column=c_idx, value=val)
             c.font = regular_font
             c.border = thin_border
+            if c_idx in [1, 3, 4, 5, 6, 8, 9]:
+                c.alignment = Alignment(horizontal="center")
 
     # Adjust widths
     for ws in [ws_sum, ws_all, ws_unreg, ws_abs]:
