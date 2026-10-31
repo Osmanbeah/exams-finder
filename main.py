@@ -8,6 +8,9 @@ import io
 import json
 import socket
 import urllib.parse
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -164,15 +167,18 @@ async def upload_master_database(
             
             c.execute("SELECT DISTINCT center_name FROM master_students WHERE center_name != '' ORDER BY center_name ASC;")
             centers = [r["center_name"] for r in c.fetchall()]
+
+            c.execute("SELECT * FROM master_students ORDER BY id ASC;")
+            all_students = [dict(r) for r in c.fetchall()]
         finally:
             conn.close()
             
         return {
             "success": True,
-            "message": f"Successfully loaded {len(students)} student records.",
+            "message": f"Successfully loaded {len(students)} student records (Total in DB: {total_in_db}).",
             "total_students": total_in_db,
             "centers": centers,
-            "students": students
+            "students": all_students
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error importing master database: {str(e)}")
@@ -342,6 +348,90 @@ async def export_reconciliation(payload: Dict[str, Any]):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
+@app.post("/api/export-missing-template")
+async def export_missing_template(payload: Dict[str, Any]):
+    """Generates an Excel template prefilled with unregistered/missing students from scans."""
+    try:
+        unmatched_records = payload.get("unmatched", [])
+        center_name = payload.get("center_name", "")
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Missing Students"
+        ws.views.sheetView[0].showGridLines = True
+        
+        headers = [
+            "م", "اسم طالب", "رقم الطالب", "رقم ولي الامر",
+            "اسم السنتر اللي بتحضر فيه", "كود الطالب", "اسم السنتر اللي هتمتحن فيه",
+            "النموذج", "الدرجة", "ملاحظات"
+        ]
+        ws.append(headers)
+        
+        header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+        header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        
+        for col_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_idx)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center")
+            
+        thin_border = Border(
+            left=Side(style="thin", color="CBD5E1"),
+            right=Side(style="thin", color="CBD5E1"),
+            top=Side(style="thin", color="CBD5E1"),
+            bottom=Side(style="thin", color="CBD5E1")
+        )
+        
+        for idx, r in enumerate(unmatched_records, 1):
+            roll_no = str(r.get("roll_no") or r.get("extracted_6_digits") or r.get("raw_code") or "")
+            score = str(r.get("score") or "")
+            model = str(r.get("exam_model") or "")
+            scanned_name = str(r.get("scanned_name") or "")
+            
+            row_data = [
+                idx,
+                scanned_name,
+                roll_no,
+                "",
+                center_name,
+                roll_no,
+                center_name,
+                model,
+                score,
+                "تم رصده في ورقة الامتحان ولم يكن مسجل بالداتابيز"
+            ]
+            ws.append(row_data)
+            
+            for c_idx in range(1, len(row_data) + 1):
+                c = ws.cell(row=idx + 1, column=c_idx)
+                c.border = thin_border
+                if c_idx in [1, 3, 6, 8, 9]:
+                    c.alignment = Alignment(horizontal="center")
+                    
+        for col in ws.columns:
+            max_len = max(len(str(cell.value or "")) for cell in col)
+            col_letter = get_column_letter(col[0].column)
+            ws.column_dimensions[col_letter].width = max(max_len + 4, 16)
+            
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        
+        safe_ascii = "missing_students_template.xlsx"
+        encoded_name = urllib.parse.quote(f"قالب_الطلاب_غير_المسجلين_{center_name}.xlsx")
+        
+        return Response(
+            content=buf.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f"attachment; filename=\"{safe_ascii}\"; filename*=UTF-8''{encoded_name}",
+                "Access-Control-Expose-Headers": "Content-Disposition"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Export template failed: {str(e)}")
 
 @app.post("/api/save-center-model")
 async def save_center_model(payload: Dict[str, Any]):

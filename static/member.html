@@ -328,9 +328,16 @@
               </p>
             </div>
           </div>
-          <button @click="activeFilter = 'unmatched'" class="px-4 py-2 bg-white text-rose-700 font-bold text-xs rounded-xl shadow hover:bg-rose-50 transition">
-            {{ isRtl ? 'عرض الطلاب غير المسجلين فقط ↓' : 'View Unregistered Students Only ↓' }}
-          </button>
+          <div class="flex items-center flex-wrap gap-2">
+            <button @click="activeFilter = 'unmatched'" class="px-4 py-2 bg-white text-rose-700 font-bold text-xs rounded-xl shadow hover:bg-rose-50 transition">
+              {{ isRtl ? 'عرض الطلاب غير المسجلين فقط ↓' : 'View Unregistered Students Only ↓' }}
+            </button>
+            <button @click="downloadMissingTemplate" :disabled="isExportingTemplate" class="px-4 py-2 bg-rose-900/40 hover:bg-rose-900 text-white font-bold text-xs rounded-xl border border-rose-300/40 shadow transition flex items-center gap-1.5">
+              <span v-if="isExportingTemplate" class="animate-spin">⏳</span>
+              <span v-else>📥</span>
+              <span>{{ isRtl ? 'تحميل شيت الطلاب المفقودين كقالب جاهز' : 'Download Missing Students Template' }}</span>
+            </button>
+          </div>
         </div>
 
         <!-- Table View with Search and Filter Tabs -->
@@ -698,6 +705,7 @@
         const mergedCenterData = ref(null);
         const isLoadingMergedStatus = ref(false);
         const isExportingFinal = ref(false);
+        const isExportingTemplate = ref(false);
         const currentModelName = ref('');
         const isSavingModel = ref(false);
         const hasSavedCurrentModel = ref(false);
@@ -911,6 +919,43 @@
           }
         };
 
+        const downloadMissingTemplate = async () => {
+          if (!matchResult.value || !matchResult.value.unmatched || matchResult.value.unmatched.length === 0) return;
+          isExportingTemplate.value = true;
+          try {
+            const res = await fetch('/api/export-missing-template', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                unmatched: matchResult.value.unmatched,
+                center_name: selectedCenter.value || 'Center'
+              })
+            });
+
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({ detail: 'Export failed' }));
+              throw new Error(errData.detail || 'Export failed');
+            }
+
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const safeCenter = (selectedCenter.value || 'Center').replace(/[/\\?%*:|"<>]/g, '_');
+            a.download = `Missing_Students_${safeCenter}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+
+            showToast(isRtl.value ? 'تم تحميل قالب الطلاب المفقودين بنجاح!' : 'Missing students template downloaded!', 'success');
+          } catch (err) {
+            showToast(err.message, 'error');
+          } finally {
+            isExportingTemplate.value = false;
+          }
+        };
+
         const displayedRecords = computed(() => {
           if (!matchResult.value) return [];
 
@@ -987,6 +1032,7 @@
           mergedCenterData,
           isLoadingMergedStatus,
           isExportingFinal,
+          isExportingTemplate,
           currentModelName,
           isSavingModel,
           hasSavedCurrentModel,
@@ -1000,6 +1046,7 @@
           openMergedModalWithCenter,
           fetchMergedCenterStatus,
           downloadMergedExcel,
+          downloadMissingTemplate,
           exportExcel,
           displayedRecords
         };
