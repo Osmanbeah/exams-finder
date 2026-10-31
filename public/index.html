@@ -329,13 +329,17 @@
             </div>
           </div>
           <div class="flex items-center flex-wrap gap-2">
-            <button @click="activeFilter = 'unmatched'" class="px-4 py-2 bg-white text-rose-700 font-bold text-xs rounded-xl shadow hover:bg-rose-50 transition">
-              {{ isRtl ? 'عرض الطلاب غير المسجلين فقط ↓' : 'View Unregistered Students Only ↓' }}
+            <button @click="activeFilter = 'unmatched'" class="px-3.5 py-2 bg-white text-rose-700 font-bold text-xs rounded-xl shadow hover:bg-rose-50 transition">
+              {{ isRtl ? 'عرض غير المسجلين فقط ↓' : 'View Unregistered Only ↓' }}
             </button>
-            <button @click="downloadMissingTemplate" :disabled="isExportingTemplate" class="px-4 py-2 bg-rose-900/40 hover:bg-rose-900 text-white font-bold text-xs rounded-xl border border-rose-300/40 shadow transition flex items-center gap-1.5">
+            <button @click="downloadMissingTemplate" :disabled="isExportingTemplate" class="px-3.5 py-2 bg-rose-900/40 hover:bg-rose-900 text-white font-bold text-xs rounded-xl border border-rose-300/40 shadow transition flex items-center gap-1.5">
               <span v-if="isExportingTemplate" class="animate-spin">⏳</span>
               <span v-else>📥</span>
-              <span>{{ isRtl ? 'تحميل شيت الطلاب المفقودين كقالب جاهز' : 'Download Missing Students Template' }}</span>
+              <span>{{ isRtl ? 'تحميل قالب الطلاب' : 'Download Template' }}</span>
+            </button>
+            <button @click="openUploadMissingModal" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5">
+              <span>📤</span>
+              <span>{{ isRtl ? 'رفع شيت بيانات الطلاب المفقودين' : 'Upload Students Info File' }}</span>
             </button>
           </div>
         </div>
@@ -730,7 +734,14 @@
             @click="downloadMissingTemplate(); showUnmatchedPromptModal = false" 
             class="w-full sm:w-auto px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5">
             <span>📥</span>
-            <span>{{ isRtl ? 'تحميل قالب الطلاب المفقودين' : 'Download Missing Template' }}</span>
+            <span>{{ isRtl ? 'تحميل قالب الطلاب' : 'Download Template' }}</span>
+          </button>
+
+          <button 
+            @click="showUnmatchedPromptModal = false; openUploadMissingModal()" 
+            class="w-full sm:w-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow transition flex items-center justify-center gap-1.5">
+            <span>📤</span>
+            <span>{{ isRtl ? 'رفع شيت بياناتهم لإضافتهم' : 'Upload Students Info' }}</span>
           </button>
 
           <button 
@@ -740,6 +751,90 @@
             <span>{{ isRtl ? 'حفظ النموذج الآن' : 'Save Model Anyway' }}</span>
           </button>
         </div>
+
+      </div>
+    </div>
+
+    <!-- ========================================================== -->
+    <!-- UPLOAD MISSING STUDENTS MODAL (DIRECT FROM MEMBER PAGE) -->
+    <!-- ========================================================== -->
+    <div v-if="showUploadMissingModal" class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4">
+        
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div class="flex items-center gap-2.5">
+            <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-lg">
+              📤
+            </div>
+            <div>
+              <h3 class="text-base font-bold text-slate-900">
+                {{ isRtl ? 'رفع شيت بيانات الطلاب غير المسجلين' : 'Upload Missing Students Info' }}
+              </h3>
+              <p class="text-xs text-slate-500">
+                {{ isRtl ? 'إضافة بيانات الطلاب مباشرة إلى قاعدة البيانات والمطابقة الفورية دون مسح أي طالب سابق' : 'Add students directly to master DB and auto-match without deleting existing records' }}
+              </p>
+            </div>
+          </div>
+          <button @click="showUploadMissingModal = false" class="text-slate-400 hover:text-slate-600 text-xl font-bold p-1">
+            ✕
+          </button>
+        </div>
+
+        <form @submit.prevent="submitMissingStudentsFile" class="space-y-4">
+          
+          <!-- Drop Zone -->
+          <div 
+            @dragover.prevent="missingDragOver = true"
+            @dragleave.prevent="missingDragOver = false"
+            @drop.prevent="handleMissingFileDrop"
+            class="border-2 border-dashed rounded-xl p-5 text-center transition cursor-pointer"
+            :class="missingDragOver ? 'border-emerald-500 bg-emerald-50' : 'border-slate-300 hover:border-slate-400 bg-slate-50'">
+            
+            <input type="file" ref="missingFileInput" @change="handleMissingFileSelect" accept=".xlsx,.xls,.csv" class="hidden">
+            
+            <div @click="$refs.missingFileInput.click()" class="space-y-2">
+              <div class="w-10 h-10 mx-auto rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-lg">
+                📑
+              </div>
+              <div v-if="!missingFile">
+                <p class="text-xs font-bold text-slate-700">
+                  {{ isRtl ? 'انقر لاختيار ملف إكسيل الطلاب أو اسحبه هنا' : 'Click or drag Excel sheet with student info' }}
+                </p>
+                <p class="text-[11px] text-slate-400">
+                  {{ isRtl ? 'أعمدة: اسم الطالب، رقم الطالب / الهاتف، سنتر الامتحان' : 'Columns: Student Name, Code/Phone, Exam Center' }}
+                </p>
+              </div>
+              <div v-else class="text-xs">
+                <span class="font-bold text-emerald-700">{{ missingFile.name }}</span>
+                <span class="text-slate-400 ml-1">({{ formatFileSize(missingFile.size) }})</span>
+                <p class="text-emerald-600 font-medium text-[11px] mt-1">✓ {{ isRtl ? 'الملف جاهز للإضافة والمطابقة' : 'Ready to import & match' }}</p>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl text-[11px] text-emerald-900">
+            ℹ️ {{ isRtl ? 'سيتم دمج هؤلاء الطلاب تلقائياً في قاعدة البيانات وتحديث مطابقة شيت الامتحان الحالي فوراً دون مسح أي بيانات سابقة.' : 'These students will be appended to the database and your scan sheet will be re-matched instantly without losing prior records.' }}
+          </div>
+
+          <div class="flex items-center justify-end gap-2 pt-1">
+            <button 
+              type="button" 
+              @click="showUploadMissingModal = false" 
+              class="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition">
+              {{ isRtl ? 'إلغاء' : 'Cancel' }}
+            </button>
+            <button 
+              type="submit" 
+              :disabled="!missingFile || isUploadingMissing"
+              class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-xl shadow transition flex items-center gap-1.5">
+              <span v-if="isUploadingMissing" class="animate-spin">⏳</span>
+              <span v-else>✓</span>
+              <span>{{ isUploadingMissing ? (isRtl ? 'جاري الإضافة والمطابقة...' : 'Importing & Matching...') : (isRtl ? 'إضافة ومطابقة فورية' : 'Import & Auto-Match') }}</span>
+            </button>
+          </div>
+
+        </form>
 
       </div>
     </div>
@@ -794,6 +889,12 @@
         const currentModelName = ref('');
         const isSavingModel = ref(false);
         const hasSavedCurrentModel = ref(false);
+
+        // Direct Missing Students Upload state
+        const showUploadMissingModal = ref(false);
+        const missingFile = ref(null);
+        const missingDragOver = ref(false);
+        const isUploadingMissing = ref(false);
 
         // Toast notification
         const toast = ref({ show: false, message: '', type: 'info' });
@@ -1053,6 +1154,62 @@
           }
         };
 
+        const openUploadMissingModal = () => {
+          missingFile.value = null;
+          showUploadMissingModal.value = true;
+        };
+
+        const handleMissingFileSelect = (e) => {
+          if (e.target.files.length > 0) {
+            missingFile.value = e.target.files[0];
+          }
+        };
+
+        const handleMissingFileDrop = (e) => {
+          missingDragOver.value = false;
+          if (e.dataTransfer.files.length > 0) {
+            missingFile.value = e.dataTransfer.files[0];
+          }
+        };
+
+        const submitMissingStudentsFile = async () => {
+          if (!missingFile.value) return;
+          isUploadingMissing.value = true;
+          try {
+            const formData = new FormData();
+            formData.append('file', missingFile.value);
+            formData.append('replace_existing', 'false'); // Append mode: do not delete existing!
+
+            const res = await fetch('/api/upload-master', {
+              method: 'POST',
+              body: formData
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Upload failed');
+
+            if (data.students && data.students.length > 0) {
+              try {
+                localStorage.setItem('exams_finder_master_backup', JSON.stringify({
+                  students: data.students,
+                  centers: data.centers
+                }));
+              } catch (e) {}
+            }
+
+            await fetchSystemInfo();
+            showUploadMissingModal.value = false;
+            showToast(isRtl.value ? `تمت إضافة بيانات الطلاب بنجاح! جاري تحديث المطابقة...` : `Students added to database! Re-matching scan sheet...`, 'success');
+
+            if (scanFile.value && selectedCenter.value) {
+              await runMatching();
+            }
+          } catch (err) {
+            showToast(err.message, 'error');
+          } finally {
+            isUploadingMissing.value = false;
+          }
+        };
+
         const startEditRoll = (row) => {
           editingRowIdx.value = row.row_index;
           editRollInput.value = row.roll_no || row.extracted_6_digits || row.raw_code || '';
@@ -1189,6 +1346,10 @@
           toast,
           showMergedModal,
           showUnmatchedPromptModal,
+          showUploadMissingModal,
+          missingFile,
+          missingDragOver,
+          isUploadingMissing,
           selectedMergedCenter,
           mergedCenterData,
           isLoadingMergedStatus,
@@ -1209,6 +1370,10 @@
           fetchMergedCenterStatus,
           downloadMergedExcel,
           downloadMissingTemplate,
+          openUploadMissingModal,
+          handleMissingFileSelect,
+          handleMissingFileDrop,
+          submitMissingStudentsFile,
           editingRowIdx,
           editRollInput,
           startEditRoll,
