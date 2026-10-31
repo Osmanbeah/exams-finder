@@ -1010,6 +1010,16 @@
 
             hasSavedCurrentModel.value = true;
             hasConfirmedUnmatchedSave.value = true;
+
+            // Save persistent backup of submissions to localStorage
+            if (data.all_submissions && data.all_submissions.length > 0) {
+              try {
+                localStorage.setItem('exams_finder_submissions_backup', JSON.stringify({
+                  submissions: data.all_submissions
+                }));
+              } catch (e) {}
+            }
+
             showToast(isRtl.value ? `تم حفظ ودمج النموذج ${currentModelName.value} بنجاح!` : `Model ${currentModelName.value} saved & merged successfully!`, 'success');
           } catch (err) {
             showToast(err.message, 'error');
@@ -1328,6 +1338,21 @@
                 }
               } catch (err) {}
             }
+          }
+
+          // Auto-recovery of center submissions from browser persistent cache
+          const cachedSubs = localStorage.getItem('exams_finder_submissions_backup');
+          if (cachedSubs) {
+            try {
+              const parsed = JSON.parse(cachedSubs);
+              if (parsed.submissions && parsed.submissions.length > 0) {
+                await fetch('/api/restore-submissions-json', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ submissions: parsed.submissions })
+                });
+              }
+            } catch (err) {}
           }
         });
 

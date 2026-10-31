@@ -708,6 +708,21 @@
             }
           }
 
+          // Auto-recovery of center submissions from browser persistent cache
+          const cachedSubs = localStorage.getItem('exams_finder_submissions_backup');
+          if (cachedSubs) {
+            try {
+              const parsed = JSON.parse(cachedSubs);
+              if (parsed.submissions && parsed.submissions.length > 0) {
+                await fetch('/api/restore-submissions-json', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ submissions: parsed.submissions })
+                });
+              }
+            } catch (err) {}
+          }
+
           await fetchStudents();
         });
 

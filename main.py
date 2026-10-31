@@ -540,6 +540,9 @@ async def save_center_model(payload: Dict[str, Any]):
             WHERE center_name = ?
         """, (center_name,))
         total_unique = c.fetchone()["total_unique"]
+
+        c.execute("SELECT * FROM center_submissions ORDER BY id ASC;")
+        all_subs = [dict(row) for row in c.fetchall()]
         
     finally:
         conn.close()
@@ -548,8 +551,56 @@ async def save_center_model(payload: Dict[str, Any]):
         "success": True,
         "message": f"Saved {len(records)} students for {exam_model} by {member_name} under {center_name}.",
         "models_summary": models_summary,
-        "total_unique_students": total_unique
+        "total_unique_students": total_unique,
+        "all_submissions": all_subs
     }
+
+@app.post("/api/restore-submissions-json")
+async def restore_submissions_json(payload: Dict[str, Any]):
+    """Restores center submissions from browser persistent backup into server DB."""
+    submissions = payload.get("submissions", [])
+    if not submissions:
+        raise HTTPException(status_code=400, detail="No submissions data provided.")
+        
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        c.execute("DELETE FROM center_submissions;")
+        c.executemany("""
+            INSERT INTO center_submissions (
+                center_name, exam_model, member_name, filename,
+                roll_no, extracted_6_digits, score, student_name,
+                status, matched_student_id, registered_center, phone
+            ) VALUES (
+                :center_name, :exam_model, :member_name, :filename,
+                :roll_no, :extracted_6_digits, :score, :student_name,
+                :status, :matched_student_id, :registered_center, :phone
+            );
+        """, submissions)
+        conn.commit()
+        
+        c.execute("SELECT COUNT(*) as total FROM center_submissions;")
+        total_in_db = c.fetchone()["total"]
+    finally:
+        conn.close()
+        
+    return {
+        "success": True,
+        "message": f"Restored {total_in_db} submissions from persistent cache.",
+        "total_submissions": total_in_db
+    }
+
+@app.get("/api/all-submissions")
+def get_all_submissions():
+    """Returns all center submissions for browser backup."""
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        c.execute("SELECT * FROM center_submissions ORDER BY id ASC;")
+        subs = [dict(r) for r in c.fetchall()]
+        return {"submissions": subs}
+    finally:
+        conn.close()
 
 @app.get("/api/center-models-status")
 def get_center_models_status(center_name: Optional[str] = None):
