@@ -37,11 +37,21 @@ app.add_middleware(
 @app.middleware("http")
 async def vercel_path_rewrite_middleware(request, call_next):
     """
-    Normalizes Vercel serverless rewritten paths when x-matched-path is sent.
+    Normalizes Vercel serverless rewritten paths.
+    Checks __vercel_route query param or x-matched-path headers.
     """
-    orig_path = request.headers.get("x-matched-path") or request.headers.get("x-forwarded-uri")
-    if orig_path:
-        request.scope["path"] = orig_path.split("?")[0]
+    route_param = request.query_params.get("__vercel_route")
+    if route_param:
+        request.scope["path"] = f"/api/{route_param.lstrip('/')}"
+    else:
+        orig_path = (
+            request.headers.get("x-matched-path")
+            or request.headers.get("x-forwarded-uri")
+            or request.headers.get("x-invoke-path")
+        )
+        if orig_path:
+            request.scope["path"] = orig_path.split("?")[0]
+            
     return await call_next(request)
 
 # Initialize Database on startup
