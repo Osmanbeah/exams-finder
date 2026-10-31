@@ -440,10 +440,30 @@
 
                   <!-- Roll No (Match Key) -->
                   <td class="py-3 px-3.5">
-                    <span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-mono font-bold"
-                      :class="row._category === 'unmatched' ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-indigo-50 text-indigo-700 border border-indigo-200'">
-                      {{ row.roll_no || row.extracted_6_digits || row.last_6_digits || 'N/A' }}
-                    </span>
+                    <div v-if="editingRowIdx === row.row_index" class="flex items-center gap-1">
+                      <input 
+                        type="text" 
+                        v-model="editRollInput" 
+                        @keyup.enter="saveCorrectedRoll(row)"
+                        @keyup.escape="cancelEditRoll"
+                        class="w-24 px-2 py-1 text-xs font-mono font-bold border-2 border-indigo-500 rounded-lg bg-white shadow-sm focus:outline-none"
+                        :placeholder="isRtl ? 'آخر 6 أرقام' : '6 digits'">
+                      <button @click="saveCorrectedRoll(row)" class="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold" :title="isRtl ? 'فحص وتطبيق' : 'Verify & Apply'">✓</button>
+                      <button @click="cancelEditRoll" class="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs" :title="isRtl ? 'إلغاء' : 'Cancel'">✕</button>
+                    </div>
+                    <div v-else class="flex items-center gap-1.5">
+                      <span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-mono font-bold"
+                        :class="row._category === 'unmatched' ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-indigo-50 text-indigo-700 border border-indigo-200'">
+                        {{ row.roll_no || row.extracted_6_digits || row.last_6_digits || 'N/A' }}
+                      </span>
+                      <button 
+                        v-if="row._category !== 'absent'" 
+                        @click="startEditRoll(row)" 
+                        class="text-slate-400 hover:text-indigo-600 p-0.5 rounded transition text-xs opacity-60 hover:opacity-100" 
+                        :title="isRtl ? 'تصحيح رقم الجلوس المكتوب خطأ' : 'Correct mistyped roll number'">
+                        ✏️
+                      </button>
+                    </div>
                   </td>
 
                   <!-- Full Name -->
@@ -758,6 +778,10 @@
         const isExporting = ref(false);
         const matchResult = ref(null);
 
+        // Inline Roll Number Correction
+        const editingRowIdx = ref(null);
+        const editRollInput = ref('');
+
         // Multi-Model and Consolidated Center state
         const showMergedModal = ref(false);
         const selectedMergedCenter = ref('');
@@ -1029,6 +1053,69 @@
           }
         };
 
+        const startEditRoll = (row) => {
+          editingRowIdx.value = row.row_index;
+          editRollInput.value = row.roll_no || row.extracted_6_digits || row.raw_code || '';
+        };
+
+        const cancelEditRoll = () => {
+          editingRowIdx.value = null;
+          editRollInput.value = '';
+        };
+
+        const saveCorrectedRoll = async (row) => {
+          const newCode = editRollInput.value.trim();
+          if (!newCode) return;
+          try {
+            const res = await fetch('/api/recheck-roll-number', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                new_code: newCode,
+                center_name: selectedCenter.value
+              })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Recheck failed');
+
+            row.roll_no = newCode;
+            row.raw_code = newCode;
+            row.extracted_6_digits = data.extracted_6_digits;
+
+            if (data.matched) {
+              row.master_student = data.master_student;
+              row.status = data.category;
+              
+              const prevCat = row._category;
+              row._category = data.category;
+              
+              if (prevCat === 'unmatched') {
+                const uIdx = matchResult.value.unmatched.findIndex(r => r.row_index === row.row_index);
+                if (uIdx !== -1) {
+                  matchResult.value.unmatched.splice(uIdx, 1);
+                  matchResult.value.summary.unmatched_count = Math.max(0, matchResult.value.summary.unmatched_count - 1);
+                }
+                if (data.category === 'matched') {
+                  matchResult.value.matched.push(row);
+                  matchResult.value.summary.matched_count++;
+                } else {
+                  matchResult.value.wrong_center.push(row);
+                  matchResult.value.summary.wrong_center_count++;
+                }
+              }
+              showToast(isRtl.value ? `✓ تم تصحيح الرقم ومطابقة الطالب: ${data.master_student.full_name}` : `✓ Matched: ${data.master_student.full_name}!`, 'success');
+            } else {
+              row.master_student = null;
+              row.status = 'unmatched';
+              showToast(isRtl.value ? `الرقم ${newCode} ما زال غير مسجل بالداتابيز` : `Roll No ${newCode} still not in Master DB`, 'info');
+            }
+          } catch (err) {
+            showToast(err.message, 'error');
+          } finally {
+            editingRowIdx.value = null;
+          }
+        };
+
         const displayedRecords = computed(() => {
           if (!matchResult.value) return [];
 
@@ -1122,6 +1209,11 @@
           fetchMergedCenterStatus,
           downloadMergedExcel,
           downloadMissingTemplate,
+          editingRowIdx,
+          editRollInput,
+          startEditRoll,
+          cancelEditRoll,
+          saveCorrectedRoll,
           exportExcel,
           displayedRecords
         };

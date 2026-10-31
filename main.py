@@ -18,7 +18,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, Res
 from fastapi.staticfiles import StaticFiles
 
 from database import init_db, get_connection
-from matcher import match_scan_batch
+from matcher import match_scan_batch, extract_last_6_digits, normalize_text
 from excel_service import (
     parse_master_student_sheet,
     parse_scan_sheet,
@@ -432,6 +432,50 @@ async def export_missing_template(payload: Dict[str, Any]):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Export template failed: {str(e)}")
+
+@app.post("/api/recheck-roll-number")
+async def recheck_roll_number(payload: Dict[str, Any]):
+    """
+    Rechecks a corrected roll number against master students.
+    Allows instant in-browser correction before saving or downloading reports.
+    """
+    raw_code = payload.get("new_code", "")
+    selected_center = payload.get("center_name", "")
+    extracted_6 = extract_last_6_digits(raw_code)
+    
+    if not extracted_6:
+        raise HTTPException(status_code=400, detail="Invalid code: Could not extract digits.")
+        
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        c.execute("SELECT * FROM master_students WHERE last_6_digits = ?", (extracted_6,))
+        matches = [dict(r) for r in c.fetchall()]
+        
+        if not matches:
+            return {
+                "matched": False,
+                "extracted_6_digits": extracted_6,
+                "message": f"Roll number '{raw_code}' (last 6: {extracted_6}) is still not in the Master Database."
+            }
+            
+        target_student = matches[0]
+        is_same_center = False
+        if selected_center and selected_center.lower() != "all":
+            if normalize_text(target_student.get("center_name")) == normalize_text(selected_center):
+                is_same_center = True
+        else:
+            is_same_center = True
+            
+        return {
+            "matched": True,
+            "extracted_6_digits": extracted_6,
+            "category": "matched" if is_same_center else "wrong_center",
+            "master_student": target_student,
+            "message": f"Successfully matched: {target_student['full_name']} ({target_student['center_name']})"
+        }
+    finally:
+        conn.close()
 
 @app.post("/api/save-center-model")
 async def save_center_model(payload: Dict[str, Any]):
