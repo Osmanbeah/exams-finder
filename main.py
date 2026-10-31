@@ -241,11 +241,67 @@ async def export_reconciliation(payload: Dict[str, Any]):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
+@app.get("/api/master-students")
+def get_master_students(
+    search: Optional[str] = None, 
+    center: Optional[str] = None, 
+    limit: int = 100, 
+    offset: int = 0
+):
+    """Returns paginated and searchable list of master students."""
+    conn = get_connection()
+    c = conn.cursor()
+    base_sql = "FROM master_students WHERE 1=1"
+    params = []
+    
+    if center and center.lower() != "all":
+        base_sql += " AND center_name = ?"
+        params.append(center)
+        
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        base_sql += " AND (full_name LIKE ? OR student_number LIKE ? OR last_6_digits LIKE ? OR phone LIKE ?)"
+        params.extend([term, term, term, term])
+        
+    c.execute(f"SELECT COUNT(*) as count {base_sql}", params)
+    total_count = c.fetchone()["count"]
+    
+    query = f"SELECT * {base_sql} ORDER BY id DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    c.execute(query, params)
+    students = [dict(r) for r in c.fetchall()]
+    conn.close()
+    
+    return {"total": total_count, "students": students}
+
 @app.get("/", response_class=HTMLResponse)
 def index_page():
-    """Serves the main application interface."""
+    """Serves the Team Member Scanner interface by default."""
+    member_path = os.path.join(STATIC_DIR, "member.html")
+    if os.path.exists(member_path):
+        with open(member_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
     index_path = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(index_path):
         with open(index_path, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     return HTMLResponse("<h2>Exam Matcher Web App Initializing...</h2>")
+
+@app.get("/member", response_class=HTMLResponse)
+def member_page():
+    """Dedicated Team Member Exam Upload & Matching page."""
+    member_path = os.path.join(STATIC_DIR, "member.html")
+    if os.path.exists(member_path):
+        with open(member_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return index_page()
+
+@app.get("/admin", response_class=HTMLResponse)
+@app.get("/master", response_class=HTMLResponse)
+def master_admin_page():
+    """Dedicated Master Student Database Management page."""
+    master_path = os.path.join(STATIC_DIR, "master.html")
+    if os.path.exists(master_path):
+        with open(master_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse("<h2>Master Admin Page Initializing...</h2>")

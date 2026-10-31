@@ -4,6 +4,25 @@ A high-performance web application designed for exam marking teams to reconcile 
 
 ---
 
+## 🌐 Two Dedicated Pages
+
+The system provides **two completely separate pages** for clean role separation:
+
+1. **Team Member Portal (`/member` or `/`)**:
+   - URL: `http://localhost:8000/member` or `http://<lan-ip>:8000/member`
+   - Focused exclusively on exam center selection and scan upload.
+   - Shows matching results, full student data, unregistered student alerts (in red), wrong-center attendees, and absent lists.
+   - Generates and downloads styled reconciliation Excel reports.
+
+2. **Master Database Admin Portal (`/master` or `/admin`)**:
+   - URL: `http://localhost:8000/master` or `http://<lan-ip>:8000/master`
+   - Dedicated to administrators/supervisors.
+   - Upload and update master student Excel/CSV files with automatic 6-digit key indexing.
+   - Live searchable and filterable directory of all registered students with pagination.
+   - Clear and reset database actions.
+
+---
+
 ## 🌟 Key Features
 
 1. **Master Database Management (Admin)**:
