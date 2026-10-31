@@ -153,10 +153,10 @@ async def upload_master_database(
             c.executemany("""
                 INSERT INTO master_students (
                     student_id, student_number, last_6_digits, full_name, 
-                    center_name, phone, seat_number, group_name, notes
+                    center_name, phone, parent_phone, seat_number, group_name, notes
                 ) VALUES (
                     :student_id, :student_number, :last_6_digits, :full_name,
-                    :center_name, :phone, :seat_number, :group_name, :notes
+                    :center_name, :phone, :parent_phone, :seat_number, :group_name, :notes
                 );
             """, students)
             
@@ -197,10 +197,10 @@ async def restore_master_json(payload: Dict[str, Any]):
         c.executemany("""
             INSERT INTO master_students (
                 student_id, student_number, last_6_digits, full_name, 
-                center_name, phone, seat_number, group_name, notes
+                center_name, phone, parent_phone, seat_number, group_name, notes
             ) VALUES (
                 :student_id, :student_number, :last_6_digits, :full_name,
-                :center_name, :phone, :seat_number, :group_name, :notes
+                :center_name, :phone, :parent_phone, :seat_number, :group_name, :notes
             );
         """, students)
         conn.commit()
@@ -361,11 +361,7 @@ async def export_missing_template(payload: Dict[str, Any]):
         ws.title = "Missing Students"
         ws.views.sheetView[0].showGridLines = True
         
-        headers = [
-            "م", "اسم طالب", "رقم الطالب", "رقم ولي الامر",
-            "اسم السنتر اللي بتحضر فيه", "كود الطالب", "اسم السنتر اللي هتمتحن فيه",
-            "النموذج", "الدرجة", "ملاحظات"
-        ]
+        headers = ["اسم الطالب", "رقم الطالب", "رقم ولي الامر", "اسم السنتر"]
         ws.append(headers)
         
         header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
@@ -386,29 +382,20 @@ async def export_missing_template(payload: Dict[str, Any]):
         
         for idx, r in enumerate(unmatched_records, 1):
             roll_no = str(r.get("roll_no") or r.get("extracted_6_digits") or r.get("raw_code") or "")
-            score = str(r.get("score") or "")
-            model = str(r.get("exam_model") or "")
             scanned_name = str(r.get("scanned_name") or "")
             
             row_data = [
-                idx,
                 scanned_name,
                 roll_no,
                 "",
-                center_name,
-                roll_no,
-                center_name,
-                model,
-                score,
-                "تم رصده في ورقة الامتحان ولم يكن مسجل بالداتابيز"
+                center_name
             ]
             ws.append(row_data)
             
             for c_idx in range(1, len(row_data) + 1):
                 c = ws.cell(row=idx + 1, column=c_idx)
                 c.border = thin_border
-                if c_idx in [1, 3, 6, 8, 9]:
-                    c.alignment = Alignment(horizontal="center")
+                c.alignment = Alignment(horizontal="center")
                     
         for col in ws.columns:
             max_len = max(len(str(cell.value or "")) for cell in col)
@@ -513,15 +500,16 @@ async def save_center_model(payload: Dict[str, Any]):
                 r.get("status") or ("matched" if m_student else "unmatched"),
                 m_student.get("id"),
                 m_student.get("center_name") or "",
-                m_student.get("phone") or ""
+                m_student.get("phone") or "",
+                m_student.get("parent_phone") or r.get("parent_phone") or ""
             ))
             
         c.executemany("""
             INSERT INTO center_submissions (
                 center_name, exam_model, member_name, filename,
                 roll_no, extracted_6_digits, score, student_name,
-                status, matched_student_id, registered_center, phone
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                status, matched_student_id, registered_center, phone, parent_phone
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, insert_rows)
         
         conn.commit()
@@ -570,11 +558,11 @@ async def restore_submissions_json(payload: Dict[str, Any]):
             INSERT INTO center_submissions (
                 center_name, exam_model, member_name, filename,
                 roll_no, extracted_6_digits, score, student_name,
-                status, matched_student_id, registered_center, phone
+                status, matched_student_id, registered_center, phone, parent_phone
             ) VALUES (
                 :center_name, :exam_model, :member_name, :filename,
                 :roll_no, :extracted_6_digits, :score, :student_name,
-                :status, :matched_student_id, :registered_center, :phone
+                :status, :matched_student_id, :registered_center, :phone, :parent_phone
             );
         """, submissions)
         conn.commit()

@@ -256,6 +256,7 @@
                 <th class="py-3 px-3.5">{{ isRtl ? 'اسم الطالب' : 'Full Student Name' }}</th>
                 <th class="py-3 px-3.5">{{ isRtl ? 'السنتر المسجل به' : 'Registered Center' }}</th>
                 <th class="py-3 px-3.5">{{ isRtl ? 'رقم الهاتف' : 'Phone' }}</th>
+                <th class="py-3 px-3.5">{{ isRtl ? 'رقم ولي الأمر' : 'Parent Phone' }}</th>
                 <th class="py-3 px-3.5">{{ isRtl ? 'رقم الجلوس' : 'Seat' }}</th>
                 <th class="py-3 px-3.5">{{ isRtl ? 'المجموعة' : 'Group' }}</th>
               </tr>
@@ -289,6 +290,10 @@
                   {{ student.phone || '-' }}
                 </td>
 
+                <td class="py-2.5 px-3.5 font-mono text-slate-600">
+                  {{ student.parent_phone || '-' }}
+                </td>
+
                 <td class="py-2.5 px-3.5 text-slate-600">
                   {{ student.seat_number || '-' }}
                 </td>
@@ -299,7 +304,7 @@
               </tr>
 
               <tr v-if="students.length === 0">
-                <td colspan="8" class="text-center py-8 text-slate-400 text-sm">
+                <td colspan="9" class="text-center py-8 text-slate-400 text-sm">
                   {{ isRtl ? 'لا يوجد طلاب مسجلون يطابقون هذا البحث' : 'No master students found matching this criteria.' }}
                 </td>
               </tr>

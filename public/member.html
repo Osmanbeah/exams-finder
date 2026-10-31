@@ -415,6 +415,8 @@
                   <th class="py-3 px-3.5">{{ isRtl ? 'السنتر المسجل به (العمود G)' : 'Registered Center' }}</th>
                   <th class="py-3 px-3.5 text-center">{{ isRtl ? 'الدرجة (Total Marks)' : 'Total Marks' }}</th>
                   <th class="py-3 px-3.5">{{ isRtl ? 'رقم الهاتف' : 'Phone' }}</th>
+                  <th class="py-3 px-3.5">{{ isRtl ? 'رقم ولي الأمر' : 'Parent Phone' }}</th>
+                  <th class="py-3 px-3.5">{{ isRtl ? 'الجلوس / المجموعة' : 'Seat / Group' }}</th>
                   <th class="py-3 px-3.5 text-center">{{ isRtl ? 'الحالة والمطابقة' : 'Status & Details' }}</th>
                 </tr>
               </thead>
@@ -520,6 +522,11 @@
                     {{ (row.master_student && row.master_student.phone) || row.phone || '-' }}
                   </td>
 
+                  <!-- Parent Phone -->
+                  <td class="py-3 px-3.5 font-mono text-slate-600">
+                    {{ (row.master_student && row.master_student.parent_phone) || row.parent_phone || '-' }}
+                  </td>
+
                   <!-- Seat / Group -->
                   <td class="py-3 px-3.5 text-slate-600">
                     <div v-if="row.master_student">
@@ -559,7 +566,7 @@
                 </tr>
 
                 <tr v-if="displayedRecords.length === 0">
-                  <td colspan="8" class="text-center py-8 text-slate-400 text-sm">
+                  <td colspan="10" class="text-center py-8 text-slate-400 text-sm">
                     {{ isRtl ? 'لا توجد سجلات مطابقة لهذا البحث أو الفلتر' : 'No records match this filter or search query.' }}
                   </td>
                 </tr>
@@ -801,7 +808,7 @@
                   {{ isRtl ? 'انقر لاختيار ملف إكسيل الطلاب أو اسحبه هنا' : 'Click or drag Excel sheet with student info' }}
                 </p>
                 <p class="text-[11px] text-slate-400">
-                  {{ isRtl ? 'أعمدة: اسم الطالب، رقم الطالب / الهاتف، سنتر الامتحان' : 'Columns: Student Name, Code/Phone, Exam Center' }}
+                  {{ isRtl ? 'الأعمدة المطلوبة: اسم الطالب، رقم الطالب، رقم ولي الأمر، اسم السنتر' : 'Required Columns: Student Name, Student Phone/Code, Parent Phone, Exam Center' }}
                 </p>
               </div>
               <div v-else class="text-xs">

@@ -38,9 +38,13 @@ HEADER_ALIASES = {
         "marks", "mark", "score", "grade", "degree", "result", "total", "percentage",
         "الدرجة", "العلامة", "النتيجة", "المجموع", "درجة الامتحان"
     ],
+    "parent_phone": [
+        "رقم ولي الامر", "رقم ولي الأمر", "ولي الامر", "ولي الأمر", "تليفون ولي الامر", "تليفون ولي الأمر", 
+        "موبايل ولي الامر", "موبايل ولي الأمر", "parent phone", "parent mobile", "parent number", "parent contact", "parent", "guardian", "هاتف ولي الامر", "هاتف ولي الأمر"
+    ],
     "phone": [
-        "رقم ولي الامر", "ولي الامر", "تليفون ولي الامر", "موبايل ولي الامر", 
-        "phone", "mobile", "tel", "phone number", "parent phone", "contact",
+        "رقم الطالب", "رقم طالب", "هاتف الطالب", "تليفون الطالب", "موبايل الطالب", 
+        "student phone", "student mobile", "phone", "mobile", "tel", "phone number", "contact",
         "تليفون", "هاتف", "رقم التليفون", "رقم الموبايل"
     ],
     "seat_number": [
@@ -73,6 +77,7 @@ def identify_columns(headers: List[str]) -> Dict[str, Optional[int]]:
         "full_name": None,
         "center_name": None,
         "phone": None,
+        "parent_phone": None,
         "seat_number": None,
         "group_name": None,
         "score": None,
@@ -210,7 +215,8 @@ def parse_master_student_sheet(file_bytes: bytes, filename: str, custom_mapping:
             
         full_name = get_val("full_name") or f"Student {raw_num}"
         center_name = get_val("center_name") or "Main Center"
-        phone = get_val("phone")
+        phone = get_val("phone") or raw_num
+        parent_phone = get_val("parent_phone")
         seat_number = get_val("seat_number")
         group_name = get_val("group_name")
         
@@ -221,6 +227,7 @@ def parse_master_student_sheet(file_bytes: bytes, filename: str, custom_mapping:
             "full_name": full_name,
             "center_name": center_name,
             "phone": phone,
+            "parent_phone": parent_phone,
             "seat_number": seat_number,
             "group_name": group_name,
             "notes": ""
@@ -368,7 +375,7 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
     
     matched_headers = [
         "Row", "Exam", "Roll No", "Student Full Name", 
-        "Registered Center", "Total Marks", "Phone Number", "Group / Attendance"
+        "Registered Center", "Total Marks", "Student Phone", "Parent Phone", "Group / Attendance"
     ]
     for col_num, h_text in enumerate(matched_headers, 1):
         cell = ws_matched.cell(row=1, column=col_num, value=h_text)
@@ -386,7 +393,8 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
             m.get("full_name"),
             m.get("center_name"),
             item.get("score"),
-            m.get("phone"),
+            m.get("phone") or m.get("student_number"),
+            m.get("parent_phone"),
             m.get("group_name")
         ]
         for c_idx, val in enumerate(row_vals, 1):
@@ -435,7 +443,7 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
     
     wrong_headers = [
         "Sheet Row", "Exam", "Roll No", "Student Name", "Exam Center Scanned At", 
-        "Official Registered Center (Col G)", "Total Marks", "Phone"
+        "Official Registered Center (Col G)", "Total Marks", "Student Phone", "Parent Phone"
     ]
     for col_num, h_text in enumerate(wrong_headers, 1):
         cell = ws_wrong.cell(row=1, column=col_num, value=h_text)
@@ -454,7 +462,8 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
             summary.get("selected_center"),
             m.get("center_name"),
             item.get("score"),
-            m.get("phone")
+            m.get("phone") or m.get("student_number"),
+            m.get("parent_phone")
         ]
         for c_idx, val in enumerate(row_vals, 1):
             c = ws_wrong.cell(row=r_idx, column=c_idx, value=val)
@@ -467,7 +476,7 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
     ws_absent = wb.create_sheet(title="Absent Students")
     ws_absent.views.sheetView[0].showGridLines = True
     
-    absent_headers = ["Student Number", "Last 6 Digits", "Full Name", "Center", "Phone", "Seat", "Group"]
+    absent_headers = ["Student Number", "Last 6 Digits", "Full Name", "Center", "Student Phone", "Parent Phone", "Seat", "Group"]
     for col_num, h_text in enumerate(absent_headers, 1):
         cell = ws_absent.cell(row=1, column=col_num, value=h_text)
         cell.font = header_font
@@ -481,7 +490,8 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
             s.get("last_6_digits"),
             s.get("full_name"),
             s.get("center_name"),
-            s.get("phone"),
+            s.get("phone") or s.get("student_number"),
+            s.get("parent_phone"),
             s.get("seat_number"),
             s.get("group_name")
         ]
@@ -586,7 +596,7 @@ def generate_merged_center_excel(
     
     headers_all = [
         "Row", "Roll No", "Student Full Name", "Exam Model", 
-        "Total Marks", "Uploaded By Member", "Phone", "Official Center", "Status"
+        "Total Marks", "Uploaded By Member", "Student Phone", "Parent Phone", "Official Center", "Status"
     ]
     for c_idx, h in enumerate(headers_all, 1):
         cell = ws_all.cell(row=1, column=c_idx, value=h)
@@ -605,6 +615,7 @@ def generate_merged_center_excel(
             s.get("score"),
             s.get("member_name"),
             s.get("phone"),
+            s.get("parent_phone"),
             s.get("registered_center"),
             "Matched" if s.get("status") == "matched" else "Wrong Center"
         ]
@@ -649,7 +660,7 @@ def generate_merged_center_excel(
     ws_abs = wb.create_sheet(title="True Absent Students")
     ws_abs.views.sheetView[0].showGridLines = True
     
-    headers_abs = ["Full Name", "Student ID / Number", "Last 6 Digits", "Center", "Phone", "Seat", "Group"]
+    headers_abs = ["Full Name", "Student ID / Number", "Last 6 Digits", "Center", "Student Phone", "Parent Phone", "Seat", "Group"]
     for c_idx, h in enumerate(headers_abs, 1):
         cell = ws_abs.cell(row=1, column=c_idx, value=h)
         cell.font = header_font
@@ -664,6 +675,7 @@ def generate_merged_center_excel(
             s.get("last_6_digits"),
             s.get("center_name"),
             s.get("phone"),
+            s.get("parent_phone"),
             s.get("seat_number"),
             s.get("group_name")
         ]

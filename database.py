@@ -60,6 +60,7 @@ def init_db():
             full_name TEXT NOT NULL,
             center_name TEXT NOT NULL,
             phone TEXT,
+            parent_phone TEXT,
             seat_number TEXT,
             group_name TEXT,
             notes TEXT,
@@ -118,6 +119,7 @@ def init_db():
             matched_student_id INTEGER,
             registered_center TEXT,
             phone TEXT,
+            parent_phone TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(matched_student_id) REFERENCES master_students(id) ON DELETE SET NULL
         );
@@ -126,6 +128,16 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_sub_roll ON center_submissions(roll_no);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_sub_model ON center_submissions(exam_model);")
         
+        # Ensure parent_phone column exists in existing databases
+        try:
+            cursor.execute("ALTER TABLE master_students ADD COLUMN parent_phone TEXT;")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE center_submissions ADD COLUMN parent_phone TEXT;")
+        except Exception:
+            pass
+            
         conn.commit()
     finally:
         conn.close()
