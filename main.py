@@ -113,31 +113,31 @@ async def upload_master_database(
             raise HTTPException(status_code=400, detail="No student records could be parsed. Check column headers.")
             
         conn = get_connection()
-        c = conn.cursor()
-        
-        if replace_existing:
-            c.execute("DELETE FROM master_students;")
+        try:
+            c = conn.cursor()
+            if replace_existing:
+                c.execute("DELETE FROM master_students;")
+                
+            c.executemany("""
+                INSERT INTO master_students (
+                    student_id, student_number, last_6_digits, full_name, 
+                    center_name, phone, seat_number, group_name, notes
+                ) VALUES (
+                    :student_id, :student_number, :last_6_digits, :full_name,
+                    :center_name, :phone, :seat_number, :group_name, :notes
+                );
+            """, students)
             
-        c.executemany("""
-            INSERT INTO master_students (
-                student_id, student_number, last_6_digits, full_name, 
-                center_name, phone, seat_number, group_name, notes
-            ) VALUES (
-                :student_id, :student_number, :last_6_digits, :full_name,
-                :center_name, :phone, :seat_number, :group_name, :notes
-            );
-        """, students)
-        
-        conn.commit()
-        
-        c.execute("SELECT COUNT(*) as total FROM master_students;")
-        total_in_db = c.fetchone()["total"]
-        
-        c.execute("SELECT DISTINCT center_name FROM master_students WHERE center_name != '' ORDER BY center_name ASC;")
-        centers = [r["center_name"] for r in c.fetchall()]
-        
-        conn.close()
-        
+            conn.commit()
+            
+            c.execute("SELECT COUNT(*) as total FROM master_students;")
+            total_in_db = c.fetchone()["total"]
+            
+            c.execute("SELECT DISTINCT center_name FROM master_students WHERE center_name != '' ORDER BY center_name ASC;")
+            centers = [r["center_name"] for r in c.fetchall()]
+        finally:
+            conn.close()
+            
         return {
             "success": True,
             "message": f"Successfully loaded {len(students)} student records.",
@@ -151,11 +151,13 @@ async def upload_master_database(
 def clear_master():
     """Clear master database."""
     conn = get_connection()
-    c = conn.cursor()
-    c.execute("DELETE FROM master_students;")
-    conn.commit()
-    conn.close()
-    return {"success": True, "message": "Master database cleared."}
+    try:
+        c = conn.cursor()
+        c.execute("DELETE FROM master_students;")
+        conn.commit()
+        return {"success": True, "message": "Master database cleared."}
+    finally:
+        conn.close()
 
 @app.post("/api/match-scan")
 async def match_scan(
@@ -175,41 +177,43 @@ async def match_scan(
             raise HTTPException(status_code=400, detail="Uploaded scan sheet contains no readable rows.")
             
         conn = get_connection()
-        c = conn.cursor()
-        c.execute("SELECT * FROM master_students;")
-        master_rows = [dict(r) for r in c.fetchall()]
-        
-        if not master_rows:
-            raise HTTPException(status_code=400, detail="Master database is empty! Please upload the Master Student Database first.")
+        try:
+            c = conn.cursor()
+            c.execute("SELECT * FROM master_students;")
+            master_rows = [dict(r) for r in c.fetchall()]
             
-        # Execute Matching Engine
-        match_result = match_scan_batch(
-            scanned_rows=scanned_rows,
-            master_students=master_rows,
-            selected_center=center_name
-        )
-        
-        # Save batch info in history
-        summary = match_result["summary"]
-        c.execute("""
-            INSERT INTO scan_batches (
-                batch_name, center_name, uploaded_by, filename,
-                total_scanned, total_matched, total_unmatched, total_wrong_center
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            file.filename,
-            center_name,
-            uploader_name,
-            file.filename,
-            summary["total_scanned"],
-            summary["matched_count"],
-            summary["unmatched_count"],
-            summary["wrong_center_count"]
-        ))
-        conn.commit()
-        batch_id = c.lastrowid
-        conn.close()
-        
+            if not master_rows:
+                raise HTTPException(status_code=400, detail="Master database is empty! Please upload the Master Student Database first.")
+                
+            # Execute Matching Engine
+            match_result = match_scan_batch(
+                scanned_rows=scanned_rows,
+                master_students=master_rows,
+                selected_center=center_name
+            )
+            
+            # Save batch info in history
+            summary = match_result["summary"]
+            c.execute("""
+                INSERT INTO scan_batches (
+                    batch_name, center_name, uploaded_by, filename,
+                    total_scanned, total_matched, total_unmatched, total_wrong_center
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                file.filename,
+                center_name,
+                uploader_name,
+                file.filename,
+                summary["total_scanned"],
+                summary["matched_count"],
+                summary["unmatched_count"],
+                summary["wrong_center_count"]
+            ))
+            conn.commit()
+            batch_id = c.lastrowid
+        finally:
+            conn.close()
+            
         match_result["batch_id"] = batch_id
         match_result["filename"] = file.filename
         

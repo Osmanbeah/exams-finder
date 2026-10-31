@@ -9,8 +9,18 @@ from typing import List, Dict, Any, Optional
 DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "exam_finder.db")
 
 def get_connection():
-    conn = sqlite3.connect(DB_FILE)
+    """
+    Returns a configured SQLite connection with WAL mode enabled
+    and a 30-second busy timeout to prevent Windows file locking issues.
+    """
+    conn = sqlite3.connect(DB_FILE, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA journal_mode = WAL;")
+        conn.execute("PRAGMA busy_timeout = 30000;")
+        conn.execute("PRAGMA synchronous = NORMAL;")
+    except Exception:
+        pass
     return conn
 
 def init_db():
