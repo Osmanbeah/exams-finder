@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Master Database Admin - Exam Student Matcher</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Vue 3 reactive framework -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Cairo:wght@400;600;700;800&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .rtl { direction: rtl; font-family: 'Cairo', sans-serif; }
+    .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    [v-cloak] { display: none; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+  <div id="app" v-cloak :class="{ 'rtl': isRtl }">
+    
+    <!-- Top Navigation Bar -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
+        
+        <!-- Logo & Title -->
+        <div class="flex items-center space-x-3" :class="{'space-x-reverse': isRtl}">
+          <div class="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-md font-black text-lg">
+            ⚙️
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="text-lg font-bold text-slate-900 leading-tight">
+                {{ isRtl ? 'لوحة تحكم المشرف - قاعدة بيانات الطلاب' : 'Master Database Admin' }}
+              </h1>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 uppercase">
+                {{ isRtl ? 'إدارة السجلات' : 'Admin Portal' }}
+              </span>
+            </div>
+            <p class="text-xs text-slate-500 font-medium">
+              {{ isRtl ? 'رفع وتحديث شيت الطلاب الرئيسي وفهرسة آخر 6 أرقام للربط الفوري' : 'Upload master student list & index 6-digit codes for real-time team matching' }}
+            </p>
+          </div>
+        </div>
+
+        <!-- Controls & Links -->
+        <div class="flex items-center space-x-3" :class="{'space-x-reverse': isRtl}">
+          
+          <!-- Master DB Status Badge -->
+          <div class="flex items-center bg-indigo-50 text-indigo-900 px-3 py-1.5 rounded-lg text-xs font-semibold border border-indigo-100">
+            <span class="mr-1.5" :class="{'ml-1.5 mr-0': isRtl}">📊</span>
+            <span>{{ isRtl ? 'إجمالي الطلاب:' : 'Total Students:' }} </span>
+            <span class="ml-1 text-indigo-700 font-black text-sm" :class="{'mr-1 ml-0': isRtl}">{{ systemInfo.master_students_count || 0 }}</span>
+            <span class="text-indigo-300 mx-1.5">|</span>
+            <span>{{ systemInfo.centers ? systemInfo.centers.length : 0 }} {{ isRtl ? 'سنتر' : 'Centers' }}</span>
+          </div>
+
+          <!-- Switch to Team Member Page -->
+          <a href="/member" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition shadow-sm">
+            <span>🎯</span>
+            <span>{{ isRtl ? 'الذهاب لصفحة مطابقة الفريق' : 'Team Member Portal' }}</span>
+          </a>
+
+          <!-- Language Toggle -->
+          <button @click="toggleLang" class="p-1.5 px-2.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 text-xs font-bold transition">
+            {{ isRtl ? 'English' : 'عربي' }}
+          </button>
+        </div>
+
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+      <!-- Top Row: Upload & Analytics -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Upload Card (1 col) -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-5">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">
+              {{ isRtl ? 'رفع شيت الطلاب الرئيسي (Excel / CSV)' : 'Upload Master Students Sheet' }}
+            </h2>
+            <p class="text-xs text-slate-500 mt-1">
+              {{ isRtl ? 'يدعم الملفات باللغتين العربية والإنجليزية. يقوم النظام باستخراج آخر 6 أرقام تلقائياً.' : 'Supports Arabic & English headers. Automatically sanitizes & indexes 6-digit keys.' }}
+            </p>
+          </div>
+
+          <form @submit.prevent="uploadMasterDb" class="space-y-4">
+            
+            <!-- File Input -->
+            <div 
+              @dragover.prevent="masterDrag = true"
+              @dragleave.prevent="masterDrag = false"
+              @drop.prevent="handleMasterFileDrop"
+              class="border-2 border-dashed rounded-xl p-5 text-center transition cursor-pointer"
+              :class="masterDrag ? 'border-indigo-500 bg-indigo-50' : 'border-slate-300 hover:border-slate-400 bg-slate-50'">
+              
+              <input type="file" ref="masterFileInput" @change="handleMasterFileSelect" accept=".xlsx,.xls,.csv" class="hidden">
+              
+              <div @click="$refs.masterFileInput.click()" class="space-y-1.5">
+                <div class="text-2xl">📥</div>
+                <div v-if="!masterFile">
+                  <p class="text-xs font-bold text-slate-700">
+                    {{ isRtl ? 'انقر لاختيار ملف قاعدة البيانات' : 'Click or drag Master Excel / CSV' }}
+                  </p>
+                  <p class="text-[11px] text-slate-400">
+                    {{ isRtl ? 'أعمدة: كود الطالب، الاسم، السنتر، الهاتف، الجلوس...' : 'Columns: Student ID, Name, Center, Phone...' }}
+                  </p>
+                </div>
+                <div v-else>
+                  <p class="text-xs font-bold text-indigo-700">{{ masterFile.name }}</p>
+                  <p class="text-[10px] text-slate-400">{{ formatFileSize(masterFile.size) }}</p>
+                  <p class="text-[11px] text-emerald-600 font-bold mt-1">✓ {{ isRtl ? 'الملف جاهز للرفع' : 'File ready for import' }}</p>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Option: Replace vs Append -->
+            <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <label class="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+                <input type="checkbox" v-model="replaceExisting" class="rounded text-indigo-600 focus:ring-indigo-500">
+                <span>{{ isRtl ? 'استبدال قاعدة البيانات الحالية بالكامل' : 'Replace existing database completely' }}</span>
+              </label>
+            </div>
+
+            <!-- Submit Button -->
+            <button 
+              type="submit" 
+              :disabled="isUploadingMaster || !masterFile"
+              class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center justify-center gap-1.5">
+              <span v-if="isUploadingMaster" class="animate-spin">⏳</span>
+              <span>{{ isUploadingMaster ? (isRtl ? 'جاري الفهرسة والحفظ...' : 'Parsing & Indexing...') : (isRtl ? 'حفظ وفهرسة قاعدة البيانات' : 'Save & Index Master Database') }}</span>
+            </button>
+
+          </form>
+
+          <!-- Danger Clear Action -->
+          <div class="pt-3 border-t border-slate-100">
+            <button 
+              v-if="systemInfo.master_students_count > 0"
+              @click="clearMasterDb" 
+              class="w-full py-2 text-rose-600 hover:bg-rose-50 border border-rose-200 font-bold text-xs rounded-xl transition">
+              🗑️ {{ isRtl ? 'مسح جميع السجلات الحالية' : 'Clear Entire Database' }}
+            </button>
+          </div>
+
+        </div>
+
+        <!-- Centers & Overview (2 cols) -->
+        <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between space-y-6">
+          
+          <div>
+            <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <h3 class="text-base font-bold text-slate-900">
+                  {{ isRtl ? 'السناتر المستخرجة من العمود G (اسم السنتر اللي هتمتحن فيه)' : 'Registered Centers (from Column G: Exam Center)' }}
+                </h3>
+                <p class="text-xs text-slate-500">
+                  {{ isRtl ? 'هذه السناتر ستظهر كقائمة منسدلة (Dropdown) لأعضاء الفريق لاختيار سنتر الامتحان' : 'These centers will populate the dropdown list for team members to pick their exam center' }}
+                </p>
+              </div>
+              <div class="text-right">
+                <span class="text-2xl font-black text-indigo-600">{{ systemInfo.centers ? systemInfo.centers.length : 0 }}</span>
+                <span class="text-xs text-slate-400 block">{{ isRtl ? 'سنتر مسجل' : 'Active Centers' }}</span>
+              </div>
+            </div>
+
+            <!-- Centers Badges Grid -->
+            <div class="mt-4">
+              <div v-if="systemInfo.centers && systemInfo.centers.length > 0" class="flex flex-wrap gap-2">
+                <div v-for="c in systemInfo.centers" :key="c" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800">
+                  <span>📍</span>
+                  <span>{{ c }}</span>
+                </div>
+              </div>
+              <div v-else class="text-xs text-slate-400 italic py-2">
+                {{ isRtl ? 'لا توجد سناتر مسجلة بعد. قم برفع الشيت الرئيسي.' : 'No centers registered yet. Please upload your master student sheet.' }}
+              </div>
+            </div>
+          </div>
+
+          <!-- Guide / How it Works Card -->
+          <div class="bg-indigo-50/70 border border-indigo-100 rounded-xl p-4 text-xs text-slate-700 space-y-2">
+            <h4 class="font-bold text-indigo-900 flex items-center gap-1.5">
+              <span>💡</span>
+              <span>{{ isRtl ? 'إرشادات الشيت الرئيسي لتطابق ممتاز 100%' : 'Master Sheet Best Practices' }}</span>
+            </h4>
+            <p class="text-slate-600 leading-relaxed">
+              {{ isRtl ? 'احرص على احتواء الشيت على عمود لكود الطالب أو رقم الهاتف وعمود للسنتر. يستخرج النظام تلقائياً آخر 6 أرقام لتسهيل مطابقة أوراق الاسكان حتى لو اختلفت كتابة الأكواد!' : 'Ensure your sheet has a student ID/number column and an exam center column. The system extracts the last 6 digits so scanned papers match seamlessly.' }}
+            </p>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- ========================================================== -->
+      <!-- BROWSER TABLE: LIVE MASTER STUDENT DATABASE -->
+      <!-- ========================================================== -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        
+        <div class="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
+          <div>
+            <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <span>👥</span>
+              <span>{{ isRtl ? 'استعراض بيانات الطلاب المسجلين' : 'Master Students Directory' }}</span>
+              <span class="text-xs font-normal text-slate-400">({{ totalStudentsCount }} {{ isRtl ? 'طالب' : 'records' }})</span>
+            </h3>
+          </div>
+
+          <!-- Filters: Center & Search -->
+          <div class="flex flex-wrap items-center gap-2.5">
+            
+            <!-- Center Filter -->
+            <select v-model="filterCenter" @change="fetchStudents" class="bg-white border border-slate-300 text-slate-700 text-xs rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="All">{{ isRtl ? 'جميع السناتر' : 'All Centers' }}</option>
+              <option v-for="c in systemInfo.centers" :key="c" :value="c">{{ c }}</option>
+            </select>
+
+            <!-- Search Box -->
+            <div class="relative w-full sm:w-64">
+              <input 
+                type="text" 
+                v-model="searchQuery" 
+                @input="debounceSearch"
+                :placeholder="isRtl ? 'بحث بالاسم، آخر 6 أرقام، أو الهاتف...' : 'Search by name, 6-digits, or ID...'" 
+                class="w-full bg-white border border-slate-300 text-slate-800 text-xs rounded-xl px-3.5 py-2 pl-8 focus:ring-2 focus:ring-indigo-500 outline-none">
+              <span class="absolute left-2.5 top-2.5 text-slate-400 text-xs">🔎</span>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="overflow-x-auto custom-scroll">
+          <table class="w-full text-xs text-left border-collapse" :class="{'text-right': isRtl}">
+            <thead class="bg-slate-100 text-slate-600 uppercase font-bold tracking-wider text-[11px] border-b border-slate-200">
+              <tr>
+                <th class="py-3 px-3.5 w-12 text-center">#</th>
+                <th class="py-3 px-3.5">{{ isRtl ? 'آخر 6 أرقام (مفتاح المطابقة)' : 'Last 6 Digits (Match Key)' }}</th>
+                <th class="py-3 px-3.5">{{ isRtl ? 'رقم / كود الطالب الكامل' : 'Full Student ID' }}</th>
+                <th class="py-3 px-3.5">{{ isRtl ? 'اسم الطالب' : 'Full Student Name' }}</th>
+                <th class="py-3 px-3.5">{{ isRtl ? 'السنتر المسجل به' : 'Registered Center' }}</th>
+                <th class="py-3 px-3.5">{{ isRtl ? 'رقم الهاتف' : 'Phone' }}</th>
+                <th class="py-3 px-3.5">{{ isRtl ? 'رقم الجلوس' : 'Seat' }}</th>
+                <th class="py-3 px-3.5">{{ isRtl ? 'المجموعة' : 'Group' }}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              
+              <tr v-for="(student, idx) in students" :key="student.id" class="hover:bg-slate-50 transition">
+                <td class="py-2.5 px-3.5 text-center font-mono text-slate-400">
+                  {{ idx + 1 + offset }}
+                </td>
+
+                <td class="py-2.5 px-3.5">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    {{ student.last_6_digits }}
+                  </span>
+                </td>
+
+                <td class="py-2.5 px-3.5 font-mono text-slate-600">
+                  {{ student.student_number }}
+                </td>
+
+                <td class="py-2.5 px-3.5 font-semibold text-slate-900">
+                  {{ student.full_name }}
+                </td>
+
+                <td class="py-2.5 px-3.5">
+                  <span class="font-medium text-slate-700">📍 {{ student.center_name }}</span>
+                </td>
+
+                <td class="py-2.5 px-3.5 font-mono text-slate-600">
+                  {{ student.phone || '-' }}
+                </td>
+
+                <td class="py-2.5 px-3.5 text-slate-600">
+                  {{ student.seat_number || '-' }}
+                </td>
+
+                <td class="py-2.5 px-3.5 text-slate-500">
+                  {{ student.group_name || '-' }}
+                </td>
+              </tr>
+
+              <tr v-if="students.length === 0">
+                <td colspan="8" class="text-center py-8 text-slate-400 text-sm">
+                  {{ isRtl ? 'لا يوجد طلاب مسجلون يطابقون هذا البحث' : 'No master students found matching this criteria.' }}
+                </td>
+              </tr>
+
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination Bar -->
+        <div v-if="totalStudentsCount > limit" class="p-4 border-t border-slate-200 flex items-center justify-between bg-slate-50 text-xs">
+          <span class="text-slate-500">
+            {{ isRtl ? `عرض ${offset + 1} إلى ${Math.min(offset + limit, totalStudentsCount)} من أصل ${totalStudentsCount} طالب` : `Showing ${offset + 1} to ${Math.min(offset + limit, totalStudentsCount)} of ${totalStudentsCount} students` }}
+          </span>
+          <div class="flex items-center gap-2">
+            <button 
+              @click="prevPage" 
+              :disabled="offset === 0"
+              class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white disabled:opacity-40 text-slate-700 font-bold hover:bg-slate-50">
+              {{ isRtl ? 'السابق' : 'Previous' }}
+            </button>
+            <button 
+              @click="nextPage" 
+              :disabled="offset + limit >= totalStudentsCount"
+              class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white disabled:opacity-40 text-slate-700 font-bold hover:bg-slate-50">
+              {{ isRtl ? 'التالي' : 'Next' }}
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+
+    <!-- Global Toast Notification -->
+    <div v-if="toast.show" class="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl text-xs font-bold text-white transition-all transform animate-bounce"
+      :class="toast.type === 'error' ? 'bg-rose-600' : 'bg-slate-900'">
+      <span>{{ toast.type === 'error' ? '❌' : '✓' }}</span>
+      <span>{{ toast.message }}</span>
+    </div>
+
+  </div>
+
+  <script>
+    const { createApp, ref, onMounted } = Vue;
+
+    createApp({
+      setup() {
+        const isRtl = ref(false);
+        const systemInfo = ref({
+          master_students_count: 0,
+          centers: [],
+          lan_url: '',
+          local_url: ''
+        });
+
+        // Upload state
+        const masterFile = ref(null);
+        const masterDrag = ref(false);
+        const replaceExisting = ref(true);
+        const isUploadingMaster = ref(false);
+
+        // Directory table state
+        const students = ref([]);
+        const totalStudentsCount = ref(0);
+        const searchQuery = ref('');
+        const filterCenter = ref('All');
+        const limit = ref(50);
+        const offset = ref(0);
+        let searchTimeout = null;
+
+        // Toast notification
+        const toast = ref({ show: false, message: '', type: 'info' });
+        const showToast = (message, type = 'info') => {
+          toast.value = { show: true, message, type };
+          setTimeout(() => { toast.value.show = false; }, 4000);
+        };
+
+        const toggleLang = () => {
+          isRtl.value = !isRtl.value;
+        };
+
+        const formatFileSize = (bytes) => {
+          if (!bytes) return '0 B';
+          const k = 1024;
+          const sizes = ['B', 'KB', 'MB'];
+          const i = Math.floor(Math.log(bytes) / Math.log(k));
+          return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        };
+
+        const fetchSystemInfo = async () => {
+          try {
+            const res = await fetch('/api/system-info');
+            const data = await res.json();
+            systemInfo.value = data;
+          } catch (err) {
+            console.error('Failed to load system info:', err);
+          }
+        };
+
+        const fetchStudents = async () => {
+          try {
+            const params = new URLSearchParams({
+              limit: limit.value,
+              offset: offset.value,
+              center: filterCenter.value,
+              search: searchQuery.value
+            });
+            const res = await fetch(`/api/master-students?${params.toString()}`);
+            const data = await res.json();
+            students.value = data.students || [];
+            totalStudentsCount.value = data.total || 0;
+          } catch (err) {
+            console.error('Failed to load students directory:', err);
+          }
+        };
+
+        const debounceSearch = () => {
+          clearTimeout(searchTimeout);
+          searchTimeout = setTimeout(() => {
+            offset.value = 0;
+            fetchStudents();
+          }, 300);
+        };
+
+        const prevPage = () => {
+          if (offset.value >= limit.value) {
+            offset.value -= limit.value;
+            fetchStudents();
+          }
+        };
+
+        const nextPage = () => {
+          if (offset.value + limit.value < totalStudentsCount.value) {
+            offset.value += limit.value;
+            fetchStudents();
+          }
+        };
+
+        const handleMasterFileSelect = (e) => {
+          if (e.target.files.length > 0) {
+            masterFile.value = e.target.files[0];
+          }
+        };
+
+        const handleMasterFileDrop = (e) => {
+          masterDrag.value = false;
+          if (e.dataTransfer.files.length > 0) {
+            masterFile.value = e.dataTransfer.files[0];
+          }
+        };
+
+        const uploadMasterDb = async () => {
+          if (!masterFile.value) return;
+          isUploadingMaster.value = true;
+          try {
+            const formData = new FormData();
+            formData.append('file', masterFile.value);
+            formData.append('replace_existing', replaceExisting.value);
+
+            const res = await fetch('/api/upload-master', {
+              method: 'POST',
+              body: formData
+            });
+            const data = await res.json();
+
+            if (!res.ok) throw new Error(data.detail || 'Upload failed');
+
+            showToast(data.message, 'success');
+            masterFile.value = null;
+            offset.value = 0;
+            await fetchSystemInfo();
+            await fetchStudents();
+          } catch (err) {
+            showToast(err.message, 'error');
+          } finally {
+            isUploadingMaster.value = false;
+          }
+        };
+
+        const clearMasterDb = async () => {
+          if (!confirm(isRtl.value ? 'هل أنت متأكد من مسح جميع بيانات الطلاب المسجلة بالكامل؟' : 'Are you sure you want to delete all master records?')) {
+            return;
+          }
+          try {
+            const res = await fetch('/api/clear-master', { method: 'DELETE' });
+            const data = await res.json();
+            showToast(data.message, 'info');
+            offset.value = 0;
+            await fetchSystemInfo();
+            await fetchStudents();
+          } catch (err) {
+            showToast(err.message, 'error');
+          }
+        };
+
+        onMounted(async () => {
+          await fetchSystemInfo();
+          await fetchStudents();
+        });
+
+        return {
+          isRtl,
+          systemInfo,
+          masterFile,
+          masterDrag,
+          replaceExisting,
+          isUploadingMaster,
+          students,
+          totalStudentsCount,
+          searchQuery,
+          filterCenter,
+          limit,
+          offset,
+          toast,
+          toggleLang,
+          formatFileSize,
+          handleMasterFileSelect,
+          handleMasterFileDrop,
+          uploadMasterDb,
+          clearMasterDb,
+          fetchStudents,
+          debounceSearch,
+          prevPage,
+          nextPage
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

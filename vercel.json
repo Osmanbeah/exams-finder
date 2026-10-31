@@ -1,9 +1,26 @@
 {
   "version": 2,
+  "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/api/(.*)",
       "destination": "/api/index.py"
+    },
+    {
+      "source": "/master",
+      "destination": "/master.html"
+    },
+    {
+      "source": "/admin",
+      "destination": "/master.html"
+    },
+    {
+      "source": "/member",
+      "destination": "/member.html"
+    },
+    {
+      "source": "/",
+      "destination": "/index.html"
     }
   ]
 }

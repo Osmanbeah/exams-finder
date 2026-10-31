@@ -37,27 +37,18 @@ app.add_middleware(
 @app.middleware("http")
 async def vercel_path_rewrite_middleware(request, call_next):
     """
-    Normalizes Vercel serverless rewritten paths.
-    When Vercel rewrites requests to /api/index.py, x-matched-path
-    contains the original browser URL requested by the user.
+    Normalizes Vercel serverless rewritten paths when x-matched-path is sent.
     """
     orig_path = request.headers.get("x-matched-path") or request.headers.get("x-forwarded-uri")
     if orig_path:
-        clean_path = orig_path.split("?")[0]
-        request.scope["path"] = clean_path
-    else:
-        current_path = request.scope.get("path", "")
-        if current_path in ["/api/index.py", "/api/index", "/api", "/api/"]:
-            request.scope["path"] = "/"
-        elif current_path.startswith("/api/index.py/"):
-            request.scope["path"] = current_path[len("/api/index.py"):]
-            
+        request.scope["path"] = orig_path.split("?")[0]
     return await call_next(request)
 
 # Initialize Database on startup
 init_db()
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+PUBLIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "public")
 try:
     if not os.path.exists(STATIC_DIR):
         os.makedirs(STATIC_DIR, exist_ok=True)
@@ -304,43 +295,22 @@ def get_master_students(
     
     return {"total": total_count, "students": students}
 
+def load_html(filename: str) -> str:
+    for folder in [PUBLIC_DIR, STATIC_DIR]:
+        path = os.path.join(folder, filename)
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return f.read()
+    return f"<h2>Page {filename} not found</h2>"
+
 @app.get("/", response_class=HTMLResponse)
-@app.get("/api/index.py", response_class=HTMLResponse)
-@app.get("/api", response_class=HTMLResponse)
-@app.get("/api/", response_class=HTMLResponse)
-def index_page():
-    """Serves the Team Member Scanner interface by default."""
-    member_path = os.path.join(STATIC_DIR, "member.html")
-    if os.path.exists(member_path):
-        with open(member_path, "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
-    index_path = os.path.join(STATIC_DIR, "index.html")
-    if os.path.exists(index_path):
-        with open(index_path, "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
-    return HTMLResponse("<h2>Exam Matcher Web App Initializing...</h2>")
-
 @app.get("/member", response_class=HTMLResponse)
-@app.get("/api/index.py/member", response_class=HTMLResponse)
-@app.get("/api/member", response_class=HTMLResponse)
 def member_page():
-    """Dedicated Team Member Exam Upload & Matching page."""
-    member_path = os.path.join(STATIC_DIR, "member.html")
-    if os.path.exists(member_path):
-        with open(member_path, "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
-    return index_page()
+    """Serves the Team Member Scanner interface."""
+    return HTMLResponse(content=load_html("member.html"))
 
-@app.get("/admin", response_class=HTMLResponse)
 @app.get("/master", response_class=HTMLResponse)
-@app.get("/api/index.py/master", response_class=HTMLResponse)
-@app.get("/api/index.py/admin", response_class=HTMLResponse)
-@app.get("/api/master", response_class=HTMLResponse)
-@app.get("/api/admin", response_class=HTMLResponse)
+@app.get("/admin", response_class=HTMLResponse)
 def master_admin_page():
     """Dedicated Master Student Database Management page."""
-    master_path = os.path.join(STATIC_DIR, "master.html")
-    if os.path.exists(master_path):
-        with open(master_path, "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
-    return HTMLResponse("<h2>Master Admin Page Initializing...</h2>")
+    return HTMLResponse(content=load_html("master.html"))
