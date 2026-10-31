@@ -347,13 +347,13 @@
             <table class="w-full text-xs text-left border-collapse" :class="{'text-right': isRtl}">
               <thead class="bg-slate-100 text-slate-600 uppercase font-bold tracking-wider text-[11px] border-b border-slate-200">
                 <tr>
-                  <th class="py-3 px-3.5 w-14 text-center">#</th>
-                  <th class="py-3 px-3.5">{{ isRtl ? 'آخر 6 أرقام (المطابقة)' : 'Last 6 Digits' }}</th>
-                  <th class="py-3 px-3.5">{{ isRtl ? 'اسم الطالب بالكامل' : 'Full Student Name' }}</th>
-                  <th class="py-3 px-3.5">{{ isRtl ? 'السنتر المسجل به' : 'Registered Center' }}</th>
-                  <th class="py-3 px-3.5 text-center">{{ isRtl ? 'الدرجة / العلامة' : 'Scanned Score' }}</th>
+                  <th class="py-3 px-3.5 w-12 text-center">#</th>
+                  <th class="py-3 px-3.5">{{ isRtl ? 'النموذج (Exam)' : 'Exam Model' }}</th>
+                  <th class="py-3 px-3.5">{{ isRtl ? 'رقم الجلوس / كود الطالب (Roll No)' : 'Roll No (Match Key)' }}</th>
+                  <th class="py-3 px-3.5">{{ isRtl ? 'اسم الطالب (من الداتابيز)' : 'Full Student Name' }}</th>
+                  <th class="py-3 px-3.5">{{ isRtl ? 'السنتر المسجل به (العمود G)' : 'Registered Center' }}</th>
+                  <th class="py-3 px-3.5 text-center">{{ isRtl ? 'الدرجة (Total Marks)' : 'Total Marks' }}</th>
                   <th class="py-3 px-3.5">{{ isRtl ? 'رقم الهاتف' : 'Phone' }}</th>
-                  <th class="py-3 px-3.5">{{ isRtl ? 'رقم الجلوس / المجموعة' : 'Seat / Group' }}</th>
                   <th class="py-3 px-3.5 text-center">{{ isRtl ? 'الحالة والمطابقة' : 'Status & Details' }}</th>
                 </tr>
               </thead>
@@ -374,15 +374,19 @@
                     {{ row.row_index || (idx + 1) }}
                   </td>
 
-                  <!-- 6 Digits Key -->
+                  <!-- Exam / Model -->
+                  <td class="py-3 px-3.5">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                      {{ row.exam_model || 'Model C' }}
+                    </span>
+                  </td>
+
+                  <!-- Roll No (Match Key) -->
                   <td class="py-3 px-3.5">
                     <span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-mono font-bold"
                       :class="row._category === 'unmatched' ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-indigo-50 text-indigo-700 border border-indigo-200'">
-                      {{ row.extracted_6_digits || row.last_6_digits || 'N/A' }}
+                      {{ row.roll_no || row.extracted_6_digits || row.last_6_digits || 'N/A' }}
                     </span>
-                    <div v-if="row.raw_code && row.raw_code !== row.extracted_6_digits" class="text-[10px] text-slate-400 mt-0.5">
-                      {{ isRtl ? 'الكود الأصلي:' : 'Raw:' }} {{ row.raw_code }}
-                    </div>
                   </td>
 
                   <!-- Full Name -->
@@ -396,7 +400,7 @@
                     <div v-else>
                       <span class="text-rose-700 font-bold flex items-center gap-1">
                         <span>❌</span>
-                        <span>{{ row.scanned_name || (isRtl ? 'طالب مجهول (غير مسجل بالداتابيز)' : 'Unknown Student (Not in DB)') }}</span>
+                        <span>{{ isRtl ? 'طالب غير مسجل بقاعدة البيانات!' : 'Student NOT in Database!' }}</span>
                       </span>
                     </div>
                   </td>
@@ -419,9 +423,9 @@
                     </div>
                   </td>
 
-                  <!-- Score -->
+                  <!-- Total Marks / Score -->
                   <td class="py-3 px-3.5 text-center font-bold">
-                    <span v-if="row.score !== undefined && row.score !== ''" class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 border border-slate-200">
+                    <span v-if="row.score !== undefined && row.score !== ''" class="px-2.5 py-1 rounded-full text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-100">
                       {{ row.score }}
                     </span>
                     <span v-else-if="row._category === 'absent'" class="text-slate-400 italic text-[10px]">

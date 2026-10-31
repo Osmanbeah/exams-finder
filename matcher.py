@@ -85,10 +85,12 @@ def match_scan_batch(
         scanned_record = {
             "row_index": idx,
             "raw_code": str(raw_code),
+            "roll_no": str(raw_code),
             "extracted_6_digits": extracted_6,
-            "scanned_name": row.get("name") or row.get("student_name") or "",
+            "exam_model": row.get("exam_model") or "Exam",
             "score": str(row.get("score") or row.get("mark") or ""),
-            "extra_data": {k: v for k, v in row.items() if k not in ["raw_code", "student_code", "number", "name", "student_name", "score", "mark"]}
+            "scanned_name": row.get("name") or row.get("student_name") or "",
+            "extra_data": {k: v for k, v in row.items() if k not in ["raw_code", "student_code", "number", "name", "student_name", "score", "mark", "exam_model", "roll_no"]}
         }
         
         if not extracted_6 or extracted_6 not in master_map:

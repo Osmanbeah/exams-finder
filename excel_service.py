@@ -14,10 +14,11 @@ from matcher import extract_last_6_digits
 
 # Mapping dictionary for auto-detecting common column variations
 HEADER_ALIASES = {
+    # Specifically prioritize "roll no" / "roll number" for scanned sheets
     "student_number": [
-        "رقم الطالب", "رقم طالب", "student number", "student_number", "student code", "student_code", 
-        "كود الطالب", "كود", "رقم الجلوس", "جلوس", "الهاتف", "موبايل", "رقم الهاتف", 
-        "الرقم التعريفي", "باركود", "barcode", "phone", "mobile", "id", "student id"
+        "roll no", "roll no.", "roll_no", "roll number", "roll", "رقم الجلوس", "جلوس",
+        "رقم الطالب", "رقم طالب", "كود الطالب", "كود", "code", "scanned code", "student number", "student_number", 
+        "student code", "student_code", "student id", "id", "باركود", "barcode", "الهاتف", "موبايل"
     ],
     "full_name": [
         "اسم الطالب", "اسم طالب", "الاسم", "اسم الطالب بالكامل", "الاسم ثلاثي", "الاسم رباعي", 
@@ -28,6 +29,14 @@ HEADER_ALIASES = {
         "اسم السنتر اللي هتمتحن فيه", "السنتر اللي هتمتحن فيه", "هتمتحن فيه", "هتمتحن", 
         "سنتر الامتحان", "مكان الامتحان", "exam center", "exam_center", "center to take exam",
         "السنتر", "اسم السنتر", "الفرع", "المقر", "لجنة", "اسم اللجنة", "center", "center name", "center_name"
+    ],
+    "exam_model": [
+        "exam", "exam model", "exam set", "model", "النموذج", "نموذج", "الامتحان", "اسم الامتحان", "paper"
+    ],
+    "score": [
+        "total marks", "total mark", "total marks.", "total grade", "total score", "total degree",
+        "marks", "mark", "score", "grade", "degree", "result", "total", "percentage",
+        "الدرجة", "العلامة", "النتيجة", "المجموع", "درجة الامتحان"
     ],
     "phone": [
         "رقم ولي الامر", "ولي الامر", "تليفون ولي الامر", "موبايل ولي الامر", 
@@ -40,10 +49,6 @@ HEADER_ALIASES = {
     "group_name": [
         "اسم السنتر اللي بتحضر فيه", "السنتر اللي بتحضر فيه", "بتحضر فيه", 
         "group", "group name", "batch", "class", "المجموعة", "الفصل", "الجروب", "الميعاد"
-    ],
-    "score": [
-        "score", "mark", "grade", "degree", "result", "total", "percentage",
-        "الدرجة", "العلامة", "النتيجة", "المجموع", "درجة الامتحان"
     ]
 }
 
@@ -70,7 +75,8 @@ def identify_columns(headers: List[str]) -> Dict[str, Optional[int]]:
         "phone": None,
         "seat_number": None,
         "group_name": None,
-        "score": None
+        "score": None,
+        "exam_model": None
     }
     
     cleaned_headers = [str(h).strip().lower() for h in headers]
@@ -225,13 +231,39 @@ def parse_master_student_sheet(file_bytes: bytes, filename: str, custom_mapping:
 def parse_scan_sheet(file_bytes: bytes, filename: str, custom_mapping: Optional[Dict[str, int]] = None) -> List[Dict[str, Any]]:
     """
     Parses an uploaded scan sheet from an exam center.
-    Extracts the 6-digit student code / number, score, and any optional info.
+    Focuses specifically on:
+      - Roll No (Student Match Key)
+      - Exam (Exam name / Model C / Set)
+      - Total Marks (Exam Grade / Score)
     """
     headers, rows = read_excel_or_csv(file_bytes, filename)
     col_map = custom_mapping or identify_columns(headers)
     
-    if col_map["student_number"] is None:
-        col_map["student_number"] = 0
+    # 1. Roll No Detection (The Primary Match Key)
+    if col_map.get("student_number") is None:
+        for idx, h in enumerate(headers):
+            h_clean = str(h).strip().lower()
+            if any(term in h_clean for term in ["roll", "code", "id", "number", "جلوس", "كود", "رقم"]):
+                col_map["student_number"] = idx
+                break
+        if col_map.get("student_number") is None:
+            col_map["student_number"] = 0
+
+    # 2. Total Marks / Score Detection
+    if col_map.get("score") is None:
+        for idx, h in enumerate(headers):
+            h_clean = str(h).strip().lower()
+            if any(term in h_clean for term in ["total marks", "total mark", "marks", "mark", "grade", "score", "درجة", "مجموع"]):
+                col_map["score"] = idx
+                break
+
+    # 3. Exam / Model Detection
+    if col_map.get("exam_model") is None:
+        for idx, h in enumerate(headers):
+            h_clean = str(h).strip().lower()
+            if h_clean == "exam" or "model" in h_clean or "نموذج" in h_clean:
+                col_map["exam_model"] = idx
+                break
 
     scanned_rows = []
     for row in rows:
@@ -245,22 +277,17 @@ def parse_scan_sheet(file_bytes: bytes, filename: str, custom_mapping: Optional[
         if not raw_code:
             continue
             
-        name = get_val("full_name")
         score = get_val("score")
-        
-        # Capture any extra columns
-        extra = {}
-        for idx, val in enumerate(row):
-            if idx not in [col_map.get("student_number"), col_map.get("full_name"), col_map.get("score")]:
-                header_title = headers[idx] if idx < len(headers) and headers[idx] else f"Col_{idx+1}"
-                extra[header_title] = clean_cell(val)
+        exam_model = get_val("exam_model") or "Exam"
+        name = get_val("full_name")
 
         scanned_rows.append({
             "raw_code": raw_code,
             "student_code": raw_code,
-            "name": name,
+            "roll_no": raw_code,
+            "exam_model": exam_model,
             "score": score,
-            **extra
+            "name": name
         })
 
     return scanned_rows
@@ -340,8 +367,8 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
     ws_matched.views.sheetView[0].showGridLines = True
     
     matched_headers = [
-        "Row", "Last 6 Digits", "Full Student Number", "Full Name", 
-        "Registered Center", "Score / Mark", "Phone Number", "Seat Number", "Group"
+        "Row", "Exam", "Roll No", "Student Full Name", 
+        "Registered Center", "Total Marks", "Phone Number", "Group / Attendance"
     ]
     for col_num, h_text in enumerate(matched_headers, 1):
         cell = ws_matched.cell(row=1, column=col_num, value=h_text)
@@ -354,20 +381,19 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
         m = item.get("master_student", {})
         row_vals = [
             item.get("row_index"),
-            item.get("extracted_6_digits"),
-            m.get("student_number"),
+            item.get("exam_model", "Exam"),
+            item.get("roll_no") or item.get("extracted_6_digits"),
             m.get("full_name"),
             m.get("center_name"),
             item.get("score"),
             m.get("phone"),
-            m.get("seat_number"),
             m.get("group_name")
         ]
         for c_idx, val in enumerate(row_vals, 1):
             c = ws_matched.cell(row=r_idx, column=c_idx, value=val)
             c.font = regular_font
             c.border = thin_border
-            if c_idx in [1, 2, 6, 8]:
+            if c_idx in [1, 2, 3, 6]:
                 c.alignment = Alignment(horizontal="center")
 
     # ----------------- SHEET 3: Discrepancies - Unmatched -----------------
@@ -375,8 +401,8 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
     ws_unmatched.views.sheetView[0].showGridLines = True
     
     unmatched_headers = [
-        "Sheet Row", "Raw Code from Scan", "Extracted 6 Digits", 
-        "Scanned Name (if any)", "Scanned Score", "Issue / Warning"
+        "Sheet Row", "Exam", "Roll No (Scanned)", 
+        "Total Marks", "Discrepancy Warning"
     ]
     for col_num, h_text in enumerate(unmatched_headers, 1):
         cell = ws_unmatched.cell(row=1, column=col_num, value=h_text)
@@ -388,19 +414,18 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
     for r_idx, item in enumerate(match_result.get("unmatched", []), start=2):
         row_vals = [
             item.get("row_index"),
-            item.get("raw_code"),
-            item.get("extracted_6_digits"),
-            item.get("scanned_name"),
+            item.get("exam_model", "Exam"),
+            item.get("roll_no") or item.get("raw_code"),
             item.get("score"),
-            item.get("reason", "Student code does not exist in master database")
+            f"Roll No '{item.get('roll_no') or item.get('raw_code')}' NOT found in Master Database!"
         ]
         for c_idx, val in enumerate(row_vals, 1):
             c = ws_unmatched.cell(row=r_idx, column=c_idx, value=val)
             c.font = regular_font
             c.border = thin_border
-            if c_idx in [1, 2, 3, 5]:
+            if c_idx in [1, 2, 3, 4]:
                 c.alignment = Alignment(horizontal="center")
-            if c_idx == 6:
+            if c_idx == 5:
                 c.font = bold_font
                 c.fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
 
@@ -409,8 +434,8 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
     ws_wrong.views.sheetView[0].showGridLines = True
     
     wrong_headers = [
-        "Sheet Row", "Last 6 Digits", "Student Name", "Uploaded Under Center", 
-        "Official Registered Center", "Full Student Number", "Phone"
+        "Sheet Row", "Exam", "Roll No", "Student Name", "Exam Center Scanned At", 
+        "Official Registered Center (Col G)", "Total Marks", "Phone"
     ]
     for col_num, h_text in enumerate(wrong_headers, 1):
         cell = ws_wrong.cell(row=1, column=col_num, value=h_text)
@@ -423,18 +448,19 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
         m = item.get("master_student", {})
         row_vals = [
             item.get("row_index"),
-            item.get("extracted_6_digits"),
+            item.get("exam_model", "Exam"),
+            item.get("roll_no") or item.get("extracted_6_digits"),
             m.get("full_name"),
             summary.get("selected_center"),
             m.get("center_name"),
-            m.get("student_number"),
+            item.get("score"),
             m.get("phone")
         ]
         for c_idx, val in enumerate(row_vals, 1):
             c = ws_wrong.cell(row=r_idx, column=c_idx, value=val)
             c.font = regular_font
             c.border = thin_border
-            if c_idx in [1, 2]:
+            if c_idx in [1, 2, 3, 7]:
                 c.alignment = Alignment(horizontal="center")
 
     # ----------------- SHEET 5: Absent Students -----------------
