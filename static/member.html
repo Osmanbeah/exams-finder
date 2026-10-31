@@ -63,12 +63,6 @@
             <span class="ml-1 text-indigo-600 font-bold" :class="{'mr-1 ml-0': isRtl}">{{ systemInfo.master_students_count || 0 }}</span>
           </div>
 
-          <!-- Switch to Admin / Master Page -->
-          <a href="/master" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition shadow-sm">
-            <span>⚙️</span>
-            <span>{{ isRtl ? 'إدارة الداتابيز (المشرف)' : 'Master Admin' }}</span>
-          </a>
-
           <!-- Language Toggle -->
           <button @click="toggleLang" class="p-1.5 px-2.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 text-xs font-bold transition">
             {{ isRtl ? 'English' : 'عربي' }}
@@ -100,11 +94,8 @@
             <div class="text-sm">
               <p class="font-bold">{{ isRtl ? 'تنبيه: لم يتم رفع قاعدة بيانات الطلاب الرئيسية بعد!' : 'Warning: Master Database is currently empty!' }}</p>
               <p class="mt-0.5 text-xs text-amber-700">
-                {{ isRtl ? 'يجب على المشرف أولاً رفع ملف الطلاب في صفحة المشرف لتتمكن من مطابقة الدرجات.' : 'The supervisor must upload the master student list in the Master Admin page before you can match.' }}
+                {{ isRtl ? 'يرجى إبلاغ المشرف لرفع قاعدة بيانات الطلاب أولاً.' : 'Please notify the supervisor to upload the master student database.' }}
               </p>
-              <a href="/master" class="inline-block mt-2 text-xs font-bold text-indigo-600 hover:underline">
-                {{ isRtl ? 'الذهاب لصفحة إدارة الداتابيز ←' : 'Go to Master Database Admin page →' }}
-              </a>
             </div>
           </div>
 
