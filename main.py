@@ -7,10 +7,11 @@ import os
 import io
 import json
 import socket
+import urllib.parse
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from database import init_db, get_connection
@@ -19,6 +20,7 @@ from excel_service import (
     parse_master_student_sheet,
     parse_scan_sheet,
     generate_reconciliation_excel,
+    generate_merged_center_excel,
     read_excel_or_csv,
     identify_columns
 )
@@ -294,6 +296,20 @@ async def match_scan(
         match_result["batch_id"] = batch_id
         match_result["filename"] = file.filename
         
+        # Auto-detect exam model from rows or filename
+        detected_model = "Model"
+        for r in scanned_rows:
+            m_val = str(r.get("exam_model") or "").strip()
+            if m_val and m_val.lower() not in ["exam", "none", "", "nan"]:
+                detected_model = m_val
+                break
+        if detected_model == "Model":
+            m_regex = re.search(r"(model\s*[a-zA-Z0-9]+|نموذج\s*[أ-يa-zA-Z0-9]+)", file.filename, re.IGNORECASE)
+            if m_regex:
+                detected_model = m_regex.group(1).title()
+                
+        match_result["detected_model"] = detected_model
+        
         return match_result
         
     except HTTPException:
@@ -303,7 +319,7 @@ async def match_scan(
 
 @app.post("/api/export-reconciliation")
 async def export_reconciliation(payload: Dict[str, Any]):
-    """Generates an Excel reconciliation report from match results."""
+    """Generates an Excel reconciliation report from match results with full Unicode filename support."""
     try:
         match_result = payload.get("match_result")
         batch_name = payload.get("batch_name", "Reconciliation_Report")
@@ -313,14 +329,206 @@ async def export_reconciliation(payload: Dict[str, Any]):
             
         excel_io = generate_reconciliation_excel(match_result, batch_name)
         
-        filename = f"{batch_name.replace(' ', '_')}_reconciliation.xlsx"
-        return StreamingResponse(
-            excel_io,
+        safe_ascii = "reconciliation_report.xlsx"
+        encoded_name = urllib.parse.quote(f"{batch_name}.xlsx")
+        
+        return Response(
+            content=excel_io.getvalue(),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
+            headers={
+                "Content-Disposition": f"attachment; filename=\"{safe_ascii}\"; filename*=UTF-8''{encoded_name}",
+                "Access-Control-Expose-Headers": "Content-Disposition"
+            }
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
+@app.post("/api/save-center-model")
+async def save_center_model(payload: Dict[str, Any]):
+    """
+    Saves and merges a model scan submission under a center without overwriting other models.
+    """
+    center_name = payload.get("center_name")
+    member_name = payload.get("member_name", "Team Member")
+    exam_model = payload.get("exam_model", "Model")
+    filename = payload.get("filename", "Scan.xlsx")
+    records = payload.get("records", [])
+    
+    if not center_name or not records:
+        raise HTTPException(status_code=400, detail="Center name and records are required.")
+        
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        
+        insert_rows = []
+        for r in records:
+            roll_no = r.get("roll_no") or r.get("raw_code") or r.get("extracted_6_digits")
+            ext_6 = r.get("extracted_6_digits") or roll_no
+            m_student = r.get("master_student") or {}
+            
+            insert_rows.append((
+                center_name,
+                exam_model,
+                member_name,
+                filename,
+                str(roll_no),
+                str(ext_6),
+                str(r.get("score") or ""),
+                m_student.get("full_name") or r.get("scanned_name") or "",
+                r.get("status") or ("matched" if m_student else "unmatched"),
+                m_student.get("id"),
+                m_student.get("center_name") or "",
+                m_student.get("phone") or ""
+            ))
+            
+        c.executemany("""
+            INSERT INTO center_submissions (
+                center_name, exam_model, member_name, filename,
+                roll_no, extracted_6_digits, score, student_name,
+                status, matched_student_id, registered_center, phone
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, insert_rows)
+        
+        conn.commit()
+        
+        c.execute("""
+            SELECT exam_model, member_name, COUNT(*) as count, MAX(created_at) as created_at
+            FROM center_submissions
+            WHERE center_name = ?
+            GROUP BY exam_model, member_name
+        """, (center_name,))
+        models_summary = [dict(row) for row in c.fetchall()]
+        
+        c.execute("""
+            SELECT COUNT(DISTINCT extracted_6_digits) as total_unique
+            FROM center_submissions
+            WHERE center_name = ?
+        """, (center_name,))
+        total_unique = c.fetchone()["total_unique"]
+        
+    finally:
+        conn.close()
+        
+    return {
+        "success": True,
+        "message": f"Saved {len(records)} students for {exam_model} by {member_name} under {center_name}.",
+        "models_summary": models_summary,
+        "total_unique_students": total_unique
+    }
+
+@app.get("/api/center-models-status")
+def get_center_models_status(center_name: Optional[str] = None):
+    """Returns all models uploaded for a center or across all centers."""
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        if center_name and center_name.lower() != "all":
+            c.execute("""
+                SELECT center_name, exam_model, member_name, COUNT(*) as count, MAX(created_at) as created_at, MAX(filename) as filename
+                FROM center_submissions
+                WHERE center_name = ?
+                GROUP BY center_name, exam_model, member_name
+                ORDER BY created_at DESC
+            """, (center_name,))
+            rows = [dict(r) for r in c.fetchall()]
+            
+            c.execute("""
+                SELECT COUNT(DISTINCT extracted_6_digits) as count 
+                FROM center_submissions 
+                WHERE center_name = ? AND status IN ('matched', 'wrong_center')
+            """, (center_name,))
+            unique_attended = c.fetchone()["count"]
+            
+            c.execute("SELECT COUNT(*) as count FROM master_students WHERE center_name = ?", (center_name,))
+            total_registered = c.fetchone()["count"]
+            
+            c.execute("""
+                SELECT COUNT(*) as count FROM master_students 
+                WHERE center_name = ? AND last_6_digits IN (
+                    SELECT DISTINCT extracted_6_digits FROM center_submissions WHERE center_name = ?
+                )
+            """, (center_name, center_name))
+            registered_attended = c.fetchone()["count"]
+            true_absent = max(0, total_registered - registered_attended)
+            
+            return {
+                "center_name": center_name,
+                "models": rows,
+                "unique_attended": unique_attended,
+                "total_registered": total_registered,
+                "true_absent": true_absent
+            }
+        else:
+            c.execute("""
+                SELECT center_name, exam_model, member_name, COUNT(*) as count, MAX(created_at) as created_at
+                FROM center_submissions
+                GROUP BY center_name, exam_model, member_name
+                ORDER BY center_name ASC, created_at DESC
+            """)
+            rows = [dict(r) for r in c.fetchall()]
+            return {"centers_breakdown": rows}
+    finally:
+        conn.close()
+
+@app.get("/api/export-center-final")
+def export_center_final(center_name: str):
+    """
+    Generates and downloads the Consolidated Final Excel Workbook
+    merging all models uploaded for this center.
+    """
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        c.execute("""
+            SELECT * FROM center_submissions 
+            WHERE center_name = ? 
+            ORDER BY id ASC
+        """, (center_name,))
+        submissions = [dict(r) for r in c.fetchall()]
+        
+        if not submissions:
+            raise HTTPException(status_code=404, detail=f"No submissions found for center '{center_name}'")
+            
+        c.execute("""
+            SELECT exam_model, member_name, COUNT(*) as count, MAX(created_at) as created_at, MAX(filename) as filename
+            FROM center_submissions
+            WHERE center_name = ?
+            GROUP BY exam_model, member_name
+        """, (center_name,))
+        models_summary = [dict(r) for r in c.fetchall()]
+        
+        attended_last6 = {s["extracted_6_digits"] for s in submissions if s["extracted_6_digits"]}
+        
+        c.execute("SELECT * FROM master_students WHERE center_name = ?", (center_name,))
+        master_for_center = [dict(r) for r in c.fetchall()]
+        
+        absent_students = [
+            m for m in master_for_center
+            if m["last_6_digits"] not in attended_last6
+        ]
+        
+    finally:
+        conn.close()
+        
+    excel_io = generate_merged_center_excel(
+        center_name=center_name,
+        submissions=submissions,
+        absent_students=absent_students,
+        models_summary=models_summary
+    )
+    
+    safe_ascii = "center_final_merged.xlsx"
+    encoded_name = urllib.parse.quote(f"{center_name}_Final_Merged.xlsx")
+    
+    return Response(
+        content=excel_io.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename=\"{safe_ascii}\"; filename*=UTF-8''{encoded_name}",
+            "Access-Control-Expose-Headers": "Content-Disposition"
+        }
+    )
 
 @app.get("/api/master-students")
 def get_master_students(

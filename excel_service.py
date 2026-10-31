@@ -505,3 +505,185 @@ def generate_reconciliation_excel(match_result: Dict[str, Any], batch_name: str)
     wb.save(output)
     output.seek(0)
     return output
+
+def generate_merged_center_excel(
+    center_name: str, 
+    submissions: List[Dict[str, Any]], 
+    absent_students: List[Dict[str, Any]],
+    models_summary: List[Dict[str, Any]]
+) -> io.BytesIO:
+    """
+    Creates a unified master Excel sheet for a specific exam center,
+    merging all uploaded models (Model A, Model B, Model C, etc.) from different members.
+    """
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active) # Remove default sheet
+    
+    # Styles
+    title_font = Font(name="Calibri", size=14, bold=True, color="1F2937")
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    regular_font = Font(name="Calibri", size=10)
+    bold_font = Font(name="Calibri", size=10, bold=True)
+    
+    header_fill_blue = PatternFill(start_color="1E40AF", end_color="1E40AF", fill_type="solid")
+    header_fill_green = PatternFill(start_color="065F46", end_color="065F46", fill_type="solid")
+    header_fill_red = PatternFill(start_color="991B1B", end_color="991B1B", fill_type="solid")
+    header_fill_slate = PatternFill(start_color="334155", end_color="334155", fill_type="solid")
+    card_fill = PatternFill(start_color="F3F4F6", end_color="F3F4F6", fill_type="solid")
+    thin_border = Border(
+        left=Side(style="thin", color="E5E7EB"),
+        right=Side(style="thin", color="E5E7EB"),
+        top=Side(style="thin", color="E5E7EB"),
+        bottom=Side(style="thin", color="E5E7EB")
+    )
+
+    # 1. Dashboard Sheet
+    ws_sum = wb.create_sheet(title="Center Overview")
+    ws_sum.views.sheetView[0].showGridLines = True
+    
+    ws_sum["A1"] = f"Final Merged Exam Report - {center_name}"
+    ws_sum["A1"].font = title_font
+    
+    total_attended = len([s for s in submissions if s.get("status") in ["matched", "wrong_center"]])
+    unmatched_count = len([s for s in submissions if s.get("status") == "unmatched"])
+    
+    metrics = [
+        ("Exam Center Name", center_name),
+        ("Total Models Uploaded", len(models_summary)),
+        ("Total Attended Students (Across All Models)", total_attended),
+        ("Unregistered Students (NOT in Master DB)", unmatched_count),
+        ("True Absent Students (Missed All Models)", len(absent_students)),
+    ]
+    for r_idx, (label, val) in enumerate(metrics, start=3):
+        ws_sum.cell(row=r_idx, column=1, value=label).font = bold_font
+        ws_sum.cell(row=r_idx, column=1).fill = card_fill
+        ws_sum.cell(row=r_idx, column=1).border = thin_border
+        
+        c = ws_sum.cell(row=r_idx, column=2, value=val)
+        c.font = bold_font
+        c.border = thin_border
+        c.alignment = Alignment(horizontal="center")
+        
+    # Models table in summary
+    ws_sum.cell(row=9, column=1, value="Uploaded Models Breakdown:").font = bold_font
+    model_headers = ["Exam Model", "Uploaded By Member", "Student Count", "Filename", "Date"]
+    for c_idx, h in enumerate(model_headers, 1):
+        cell = ws_sum.cell(row=10, column=c_idx, value=h)
+        cell.font = header_font
+        cell.fill = header_fill_blue
+        cell.border = thin_border
+        
+    for idx, m in enumerate(models_summary, 11):
+        ws_sum.cell(row=idx, column=1, value=m.get("exam_model")).border = thin_border
+        ws_sum.cell(row=idx, column=2, value=m.get("member_name")).border = thin_border
+        ws_sum.cell(row=idx, column=3, value=m.get("count")).border = thin_border
+        ws_sum.cell(row=idx, column=4, value=m.get("filename")).border = thin_border
+        ws_sum.cell(row=idx, column=5, value=str(m.get("created_at") or "")).border = thin_border
+
+    # 2. Merged Attended Students Sheet
+    ws_all = wb.create_sheet(title="All Attended Students")
+    ws_all.views.sheetView[0].showGridLines = True
+    
+    headers_all = [
+        "Row", "Roll No", "Student Full Name", "Exam Model", 
+        "Total Marks", "Uploaded By Member", "Phone", "Official Center", "Status"
+    ]
+    for c_idx, h in enumerate(headers_all, 1):
+        cell = ws_all.cell(row=1, column=c_idx, value=h)
+        cell.font = header_font
+        cell.fill = header_fill_green
+        cell.alignment = Alignment(horizontal="center")
+        cell.border = thin_border
+        
+    matched_subs = [s for s in submissions if s.get("status") in ["matched", "wrong_center"]]
+    for r_idx, s in enumerate(matched_subs, 2):
+        row_vals = [
+            r_idx - 1,
+            s.get("roll_no") or s.get("extracted_6_digits"),
+            s.get("student_name") or "Unknown",
+            s.get("exam_model"),
+            s.get("score"),
+            s.get("member_name"),
+            s.get("phone"),
+            s.get("registered_center"),
+            "Matched" if s.get("status") == "matched" else "Wrong Center"
+        ]
+        for c_idx, val in enumerate(row_vals, 1):
+            c = ws_all.cell(row=r_idx, column=c_idx, value=val)
+            c.font = regular_font
+            c.border = thin_border
+            if c_idx in [1, 2, 4, 5]:
+                c.alignment = Alignment(horizontal="center")
+
+    # 3. Discrepancies (Unregistered Students)
+    ws_unreg = wb.create_sheet(title="NOT in Master DB")
+    ws_unreg.views.sheetView[0].showGridLines = True
+    
+    headers_unreg = ["Row", "Roll No", "Exam Model", "Total Marks", "Uploaded By Member", "Warning"]
+    for c_idx, h in enumerate(headers_unreg, 1):
+        cell = ws_unreg.cell(row=1, column=c_idx, value=h)
+        cell.font = header_font
+        cell.fill = header_fill_red
+        cell.alignment = Alignment(horizontal="center")
+        cell.border = thin_border
+        
+    unreg_subs = [s for s in submissions if s.get("status") == "unmatched"]
+    for r_idx, s in enumerate(unreg_subs, 2):
+        row_vals = [
+            r_idx - 1,
+            s.get("roll_no"),
+            s.get("exam_model"),
+            s.get("score"),
+            s.get("member_name"),
+            f"Roll No '{s.get('roll_no')}' not found in Master Database!"
+        ]
+        for c_idx, val in enumerate(row_vals, 1):
+            c = ws_unreg.cell(row=r_idx, column=c_idx, value=val)
+            c.font = regular_font
+            c.border = thin_border
+            if c_idx == 6:
+                c.font = bold_font
+                c.fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
+
+    # 4. True Absent Students
+    ws_abs = wb.create_sheet(title="True Absent Students")
+    ws_abs.views.sheetView[0].showGridLines = True
+    
+    headers_abs = ["Full Name", "Student ID / Number", "Last 6 Digits", "Center", "Phone", "Seat", "Group"]
+    for c_idx, h in enumerate(headers_abs, 1):
+        cell = ws_abs.cell(row=1, column=c_idx, value=h)
+        cell.font = header_font
+        cell.fill = header_fill_slate
+        cell.alignment = Alignment(horizontal="center")
+        cell.border = thin_border
+        
+    for r_idx, s in enumerate(absent_students, 2):
+        row_vals = [
+            s.get("full_name"),
+            s.get("student_number"),
+            s.get("last_6_digits"),
+            s.get("center_name"),
+            s.get("phone"),
+            s.get("seat_number"),
+            s.get("group_name")
+        ]
+        for c_idx, val in enumerate(row_vals, 1):
+            c = ws_abs.cell(row=r_idx, column=c_idx, value=val)
+            c.font = regular_font
+            c.border = thin_border
+
+    # Adjust widths
+    for ws in [ws_sum, ws_all, ws_unreg, ws_abs]:
+        for col in ws.columns:
+            max_len = 0
+            col_letter = get_column_letter(col[0].column)
+            for cell in col:
+                val_str = str(cell.value or "")
+                if len(val_str) > max_len:
+                    max_len = len(val_str)
+            ws.column_dimensions[col_letter].width = max(max_len + 3, 14)
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output

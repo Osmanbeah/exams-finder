@@ -64,6 +64,14 @@
             <span>{{ isRtl ? 'الذهاب لصفحة مطابقة الفريق' : 'Team Member Portal' }}</span>
           </a>
 
+          <!-- Extract Center Final Sheet Button -->
+          <button 
+            @click="openMergedModal" 
+            class="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm transition">
+            <span>📑</span>
+            <span>{{ isRtl ? 'استخراج الشيت المجمع للسنتر' : 'Consolidated Center Sheets' }}</span>
+          </button>
+
           <!-- Language Toggle -->
           <button @click="toggleLang" class="p-1.5 px-2.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 text-xs font-bold transition">
             {{ isRtl ? 'English' : 'عربي' }}
@@ -325,6 +333,121 @@
 
     </main>
 
+    <!-- ========================================================== -->
+    <!-- CONSOLIDATED CENTER SHEETS MODAL -->
+    <!-- ========================================================== -->
+    <div v-if="showMergedModal" class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 space-y-5">
+        
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div class="flex items-center gap-2.5">
+            <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-lg">
+              📊
+            </div>
+            <div>
+              <h3 class="text-base font-bold text-slate-900">
+                {{ isRtl ? 'استخراج الشيت النهائي المجمع للسنتر' : 'Consolidated Center Final Workbook' }}
+              </h3>
+              <p class="text-xs text-slate-500">
+                {{ isRtl ? 'دمج كافة نماذج الامتحان المرفوعة لنفس السنتر في ملف إكسيل نهائي موحد' : 'Merge all uploaded models for this center into a single final Excel report' }}
+              </p>
+            </div>
+          </div>
+          <button @click="showMergedModal = false" class="text-slate-400 hover:text-slate-600 text-xl font-bold p-1">
+            ✕
+          </button>
+        </div>
+
+        <!-- Center Picker -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            {{ isRtl ? 'اختر السنتر المطلوب استخراج الشيت المجمع له:' : 'Select Exam Center to Extract:' }}
+          </label>
+          <select 
+            v-model="selectedMergedCenter" 
+            @change="fetchMergedCenterStatus"
+            class="w-full bg-slate-50 border border-slate-300 text-slate-900 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none">
+            <option value="" disabled>{{ isRtl ? '-- اختر السنتر --' : '-- Select Center --' }}</option>
+            <option v-for="c in systemInfo.centers" :key="c" :value="c">📍 {{ c }}</option>
+          </select>
+        </div>
+
+        <!-- Loading Center Models Status -->
+        <div v-if="isLoadingMergedStatus" class="py-8 text-center text-slate-400 text-sm">
+          <span class="animate-spin text-2xl inline-block mb-2">⏳</span>
+          <p>{{ isRtl ? 'جاري فحص النماذج المرفوعة لهذا السنتر...' : 'Checking uploaded models for this center...' }}</p>
+        </div>
+
+        <!-- Center Status Overview -->
+        <div v-else-if="selectedMergedCenter && mergedCenterData" class="space-y-4">
+          
+          <!-- Quick KPIs -->
+          <div class="grid grid-cols-3 gap-3 text-center">
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <div class="text-[11px] font-semibold text-slate-500">{{ isRtl ? 'إجمالي المسجلين بالداتابيز' : 'Total Registered' }}</div>
+              <div class="text-xl font-black text-slate-800 mt-0.5">{{ mergedCenterData.total_registered }}</div>
+            </div>
+            <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+              <div class="text-[11px] font-semibold text-emerald-700">{{ isRtl ? 'إجمالي الحضور الفعلي' : 'Unique Attended' }}</div>
+              <div class="text-xl font-black text-emerald-700 mt-0.5">{{ mergedCenterData.unique_attended }}</div>
+            </div>
+            <div class="bg-rose-50 border border-rose-200 rounded-xl p-3">
+              <div class="text-[11px] font-semibold text-rose-700">{{ isRtl ? 'الغياب الحقيقي' : 'True Absent' }}</div>
+              <div class="text-xl font-black text-rose-700 mt-0.5">{{ mergedCenterData.true_absent }}</div>
+            </div>
+          </div>
+
+          <!-- Uploaded Models List -->
+          <div>
+            <div class="text-xs font-bold text-slate-700 mb-2 flex items-center justify-between">
+              <span>{{ isRtl ? 'النماذج المرفوعة والمحفوظة لهذا السنتر:' : 'Uploaded Models for this Center:' }}</span>
+              <span class="text-[11px] text-slate-500">{{ mergedCenterData.models ? mergedCenterData.models.length : 0 }} {{ isRtl ? 'نموذج' : 'models' }}</span>
+            </div>
+
+            <div v-if="mergedCenterData.models && mergedCenterData.models.length > 0" class="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 max-h-48 overflow-y-auto custom-scroll">
+              <div v-for="(m, i) in mergedCenterData.models" :key="i" class="p-3 flex items-center justify-between text-xs hover:bg-slate-50">
+                <div class="flex items-center gap-2.5">
+                  <span class="px-2.5 py-1 rounded-lg font-bold bg-indigo-100 text-indigo-700 text-xs">{{ m.exam_model }}</span>
+                  <div>
+                    <div class="font-bold text-slate-800">{{ m.filename || 'Scanned File' }}</div>
+                    <div class="text-[11px] text-slate-400">{{ isRtl ? 'رفع بواسطة عضو الفريق:' : 'Uploaded by:' }} <strong class="text-slate-600">{{ m.member_name }}</strong></div>
+                  </div>
+                </div>
+                <div class="text-right" :class="{'text-left': isRtl}">
+                  <span class="font-black text-indigo-700 text-sm">{{ m.count }}</span>
+                  <span class="text-slate-400 text-[10px] block">{{ isRtl ? 'طالب' : 'students' }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-else class="p-5 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl text-slate-400 text-xs">
+              {{ isRtl ? 'لم يقم أي عضو بحفظ أي نموذج لهذا السنتر بعد.' : 'No models have been saved for this center yet.' }}
+            </div>
+          </div>
+
+          <!-- Download Action -->
+          <div class="pt-2 flex items-center justify-end gap-3">
+            <button 
+              @click="showMergedModal = false" 
+              class="px-4 py-2 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition">
+              {{ isRtl ? 'إغلاق' : 'Close' }}
+            </button>
+            <button 
+              @click="downloadMergedExcel" 
+              :disabled="!mergedCenterData.models || mergedCenterData.models.length === 0 || isExportingFinal"
+              class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center gap-2">
+              <span v-if="isExportingFinal" class="animate-spin">⏳</span>
+              <span v-else>📥</span>
+              <span>{{ isRtl ? 'تحميل الشيت النهائي المجمع (.xlsx)' : 'Download Consolidated Center Excel (.xlsx)' }}</span>
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+
     <!-- Global Toast Notification -->
     <div v-if="toast.show" class="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl text-xs font-bold text-white transition-all transform animate-bounce"
       :class="toast.type === 'error' ? 'bg-rose-600' : 'bg-slate-900'">
@@ -361,6 +484,13 @@
         const limit = ref(50);
         const offset = ref(0);
         let searchTimeout = null;
+
+        // Multi-Model and Consolidated Center state
+        const showMergedModal = ref(false);
+        const selectedMergedCenter = ref('');
+        const mergedCenterData = ref(null);
+        const isLoadingMergedStatus = ref(false);
+        const isExportingFinal = ref(false);
 
         // Toast notification
         const toast = ref({ show: false, message: '', type: 'info' });
@@ -483,6 +613,57 @@
           }
         };
 
+        const openMergedModal = () => {
+          showMergedModal.value = true;
+          if (!selectedMergedCenter.value && systemInfo.value.centers && systemInfo.value.centers.length > 0) {
+            selectedMergedCenter.value = systemInfo.value.centers[0];
+          }
+          if (selectedMergedCenter.value) {
+            fetchMergedCenterStatus();
+          }
+        };
+
+        const fetchMergedCenterStatus = async () => {
+          if (!selectedMergedCenter.value) return;
+          isLoadingMergedStatus.value = true;
+          try {
+            const res = await fetch(`/api/center-models-status?center_name=${encodeURIComponent(selectedMergedCenter.value)}`);
+            const data = await res.json();
+            mergedCenterData.value = data;
+          } catch (err) {
+            console.error('Failed to load merged center status:', err);
+          } finally {
+            isLoadingMergedStatus.value = false;
+          }
+        };
+
+        const downloadMergedExcel = async () => {
+          if (!selectedMergedCenter.value) return;
+          isExportingFinal.value = true;
+          try {
+            const res = await fetch(`/api/export-center-final?center_name=${encodeURIComponent(selectedMergedCenter.value)}`);
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({ detail: 'Export failed' }));
+              throw new Error(errData.detail || 'Export failed');
+            }
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const safeName = selectedMergedCenter.value.replace(/[/\\?%*:|"<>]/g, '_');
+            a.download = `${safeName}_Final_Merged.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            showToast(isRtl.value ? 'تم تحميل الشيت المجمع بنجاح!' : 'Consolidated Excel downloaded successfully!', 'success');
+          } catch (err) {
+            showToast(err.message, 'error');
+          } finally {
+            isExportingFinal.value = false;
+          }
+        };
+
         const clearMasterDb = async () => {
           if (!confirm(isRtl.value ? 'هل أنت متأكد من مسح جميع بيانات الطلاب المسجلة بالكامل؟' : 'Are you sure you want to delete all master records?')) {
             return;
@@ -544,12 +725,20 @@
           limit,
           offset,
           toast,
+          showMergedModal,
+          selectedMergedCenter,
+          mergedCenterData,
+          isLoadingMergedStatus,
+          isExportingFinal,
           toggleLang,
           formatFileSize,
           handleMasterFileSelect,
           handleMasterFileDrop,
           uploadMasterDb,
           clearMasterDb,
+          openMergedModal,
+          fetchMergedCenterStatus,
+          downloadMergedExcel,
           fetchStudents,
           debounceSearch,
           prevPage,

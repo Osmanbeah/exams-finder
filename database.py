@@ -102,6 +102,30 @@ def init_db():
         );
         """)
         
+        # Table for accumulating multiple models per center from different members
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS center_submissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            center_name TEXT NOT NULL,
+            exam_model TEXT NOT NULL,
+            member_name TEXT NOT NULL,
+            filename TEXT,
+            roll_no TEXT NOT NULL,
+            extracted_6_digits TEXT NOT NULL,
+            score TEXT,
+            student_name TEXT,
+            status TEXT,
+            matched_student_id INTEGER,
+            registered_center TEXT,
+            phone TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(matched_student_id) REFERENCES master_students(id) ON DELETE SET NULL
+        );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sub_center ON center_submissions(center_name);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sub_roll ON center_submissions(roll_no);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sub_model ON center_submissions(exam_model);")
+        
         conn.commit()
     finally:
         conn.close()
