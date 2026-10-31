@@ -38,8 +38,14 @@ app.add_middleware(
 init_db()
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
-os.makedirs(STATIC_DIR, exist_ok=True)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+try:
+    if not os.path.exists(STATIC_DIR):
+        os.makedirs(STATIC_DIR, exist_ok=True)
+except Exception:
+    pass
+
+if os.path.exists(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 def get_lan_ip():
     """Get the local network IP so team members can connect."""
