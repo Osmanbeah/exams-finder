@@ -459,6 +459,18 @@
 
             if (!res.ok) throw new Error(data.detail || 'Upload failed');
 
+            // Save persistent backup to localStorage so refreshing never loses data
+            if (data.students && data.students.length > 0) {
+              try {
+                localStorage.setItem('exams_finder_master_backup', JSON.stringify({
+                  students: data.students,
+                  centers: data.centers
+                }));
+              } catch (e) {
+                console.warn('localStorage full or disabled', e);
+              }
+            }
+
             showToast(data.message, 'success');
             masterFile.value = null;
             offset.value = 0;
@@ -476,6 +488,7 @@
             return;
           }
           try {
+            localStorage.removeItem('exams_finder_master_backup');
             const res = await fetch('/api/clear-master', { method: 'DELETE' });
             const data = await res.json();
             showToast(data.message, 'info');
@@ -489,6 +502,31 @@
 
         onMounted(async () => {
           await fetchSystemInfo();
+
+          // Auto-recovery: If Vercel serverless recycled /tmp, restore from browser persistent cache
+          if (systemInfo.value.master_students_count === 0) {
+            const cached = localStorage.getItem('exams_finder_master_backup');
+            if (cached) {
+              try {
+                const parsed = JSON.parse(cached);
+                if (parsed.students && parsed.students.length > 0) {
+                  showToast(isRtl.value ? 'جاري استعادة قاعدة البيانات من الذاكرة الدائمة...' : 'Restoring database from browser cache...', 'info');
+                  const restoreRes = await fetch('/api/restore-master-json', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ students: parsed.students })
+                  });
+                  if (restoreRes.ok) {
+                    await fetchSystemInfo();
+                    showToast(isRtl.value ? `تمت استعادة ${parsed.students.length} طالب تلقائياً` : `Auto-restored ${parsed.students.length} students`, 'success');
+                  }
+                }
+              } catch (err) {
+                console.error('Failed to auto-restore cache:', err);
+              }
+            }
+          }
+
           await fetchStudents();
         });
 

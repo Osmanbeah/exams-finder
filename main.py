@@ -169,10 +169,60 @@ async def upload_master_database(
             "success": True,
             "message": f"Successfully loaded {len(students)} student records.",
             "total_students": total_in_db,
-            "centers": centers
+            "centers": centers,
+            "students": students
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error importing master database: {str(e)}")
+
+@app.post("/api/restore-master-json")
+async def restore_master_json(payload: Dict[str, Any]):
+    """Restores master students from browser persistent backup into server DB."""
+    students = payload.get("students", [])
+    if not students:
+        raise HTTPException(status_code=400, detail="No students data provided.")
+        
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        c.execute("DELETE FROM master_students;")
+        c.executemany("""
+            INSERT INTO master_students (
+                student_id, student_number, last_6_digits, full_name, 
+                center_name, phone, seat_number, group_name, notes
+            ) VALUES (
+                :student_id, :student_number, :last_6_digits, :full_name,
+                :center_name, :phone, :seat_number, :group_name, :notes
+            );
+        """, students)
+        conn.commit()
+        
+        c.execute("SELECT COUNT(*) as total FROM master_students;")
+        total_in_db = c.fetchone()["total"]
+        
+        c.execute("SELECT DISTINCT center_name FROM master_students WHERE center_name != '' ORDER BY center_name ASC;")
+        centers = [r["center_name"] for r in c.fetchall()]
+    finally:
+        conn.close()
+        
+    return {
+        "success": True,
+        "message": f"Restored {total_in_db} students from persistent cache.",
+        "total_students": total_in_db,
+        "centers": centers
+    }
+
+@app.get("/api/all-master-students")
+def get_all_master_students():
+    """Returns all master students for browser backup."""
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        c.execute("SELECT * FROM master_students ORDER BY id ASC;")
+        students = [dict(r) for r in c.fetchall()]
+        return {"students": students}
+    finally:
+        conn.close()
 
 @app.delete("/api/clear-master")
 def clear_master():

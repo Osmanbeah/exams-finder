@@ -670,8 +670,26 @@
           return list;
         });
 
-        onMounted(() => {
-          fetchSystemInfo();
+        onMounted(async () => {
+          await fetchSystemInfo();
+          if (systemInfo.value.master_students_count === 0) {
+            const cached = localStorage.getItem('exams_finder_master_backup');
+            if (cached) {
+              try {
+                const parsed = JSON.parse(cached);
+                if (parsed.students && parsed.students.length > 0) {
+                  const restoreRes = await fetch('/api/restore-master-json', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ students: parsed.students })
+                  });
+                  if (restoreRes.ok) {
+                    await fetchSystemInfo();
+                  }
+                }
+              } catch (err) {}
+            }
+          }
         });
 
         return {
