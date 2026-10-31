@@ -128,6 +128,18 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_sub_roll ON center_submissions(roll_no);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_sub_model ON center_submissions(exam_model);")
         
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS master_upload_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename TEXT NOT NULL,
+            uploader_name TEXT,
+            total_students INTEGER DEFAULT 0,
+            total_centers INTEGER DEFAULT 0,
+            replace_existing INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+        
         # Ensure parent_phone column exists in existing databases
         try:
             cursor.execute("ALTER TABLE master_students ADD COLUMN parent_phone TEXT;")

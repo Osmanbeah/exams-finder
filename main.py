@@ -95,6 +95,13 @@ def get_system_info():
     
     c.execute("SELECT DISTINCT center_name FROM master_students WHERE center_name != '' ORDER BY center_name ASC;")
     centers = [r["center_name"] for r in c.fetchall()]
+
+    c.execute("SELECT * FROM master_upload_logs ORDER BY id DESC LIMIT 1;")
+    last_log = c.fetchone()
+    last_master_upload = dict(last_log) if last_log else None
+
+    c.execute("SELECT COUNT(DISTINCT member_name) as uploader_count FROM center_submissions WHERE member_name != '';")
+    team_uploaders_count = c.fetchone()["uploader_count"]
     
     conn.close()
     return {
@@ -102,7 +109,9 @@ def get_system_info():
         "lan_url": f"http://{lan_ip}:8000",
         "lan_ip": lan_ip,
         "master_students_count": master_count,
-        "centers": centers
+        "centers": centers,
+        "last_master_upload": last_master_upload,
+        "team_uploaders_count": team_uploaders_count
     }
 
 @app.get("/api/centers")
@@ -135,7 +144,8 @@ async def preview_sheet(file: UploadFile = File(...)):
 @app.post("/api/upload-master")
 async def upload_master_database(
     file: UploadFile = File(...),
-    replace_existing: bool = Form(True)
+    replace_existing: bool = Form(True),
+    uploader_name: Optional[str] = Form("المشرف (Admin)")
 ):
     """Uploads and saves the master student list into SQLite."""
     content = await file.read()
@@ -160,13 +170,26 @@ async def upload_master_database(
                 );
             """, students)
             
-            conn.commit()
-            
             c.execute("SELECT COUNT(*) as total FROM master_students;")
             total_in_db = c.fetchone()["total"]
             
             c.execute("SELECT DISTINCT center_name FROM master_students WHERE center_name != '' ORDER BY center_name ASC;")
             centers = [r["center_name"] for r in c.fetchall()]
+
+            # Record in master_upload_logs with uploader name
+            c.execute("""
+                INSERT INTO master_upload_logs (
+                    filename, uploader_name, total_students, total_centers, replace_existing
+                ) VALUES (?, ?, ?, ?, ?)
+            """, (
+                file.filename,
+                uploader_name or "المشرف (Admin)",
+                total_in_db,
+                len(centers),
+                1 if replace_existing else 0
+            ))
+            
+            conn.commit()
 
             c.execute("SELECT * FROM master_students ORDER BY id ASC;")
             all_students = [dict(r) for r in c.fetchall()]
@@ -504,6 +527,12 @@ async def save_center_model(payload: Dict[str, Any]):
                 m_student.get("parent_phone") or r.get("parent_phone") or ""
             ))
             
+        # Delete prior records for the same center, model, and member before inserting to prevent duplicate records on re-save
+        c.execute("""
+            DELETE FROM center_submissions 
+            WHERE center_name = ? AND exam_model = ? AND member_name = ?
+        """, (center_name, exam_model, member_name))
+
         c.executemany("""
             INSERT INTO center_submissions (
                 center_name, exam_model, member_name, filename,
@@ -598,7 +627,16 @@ def get_center_models_status(center_name: Optional[str] = None):
         c = conn.cursor()
         if center_name and center_name.lower() != "all":
             c.execute("""
-                SELECT center_name, exam_model, member_name, COUNT(*) as count, MAX(created_at) as created_at, MAX(filename) as filename
+                SELECT 
+                    center_name, 
+                    exam_model, 
+                    member_name, 
+                    COUNT(*) as count, 
+                    COUNT(*) as student_count,
+                    COUNT(CASE WHEN status IN ('matched', 'wrong_center') THEN 1 END) as matched_count,
+                    COUNT(CASE WHEN status = 'unmatched' THEN 1 END) as unmatched_count,
+                    MAX(created_at) as created_at, 
+                    MAX(filename) as filename
                 FROM center_submissions
                 WHERE center_name = ?
                 GROUP BY center_name, exam_model, member_name
@@ -634,13 +672,68 @@ def get_center_models_status(center_name: Optional[str] = None):
             }
         else:
             c.execute("""
-                SELECT center_name, exam_model, member_name, COUNT(*) as count, MAX(created_at) as created_at
+                SELECT 
+                    center_name, 
+                    exam_model, 
+                    member_name, 
+                    MAX(filename) as filename,
+                    COUNT(*) as count,
+                    COUNT(*) as student_count,
+                    COUNT(CASE WHEN status IN ('matched', 'wrong_center') THEN 1 END) as matched_count,
+                    COUNT(CASE WHEN status = 'unmatched' THEN 1 END) as unmatched_count,
+                    MAX(created_at) as created_at
                 FROM center_submissions
                 GROUP BY center_name, exam_model, member_name
-                ORDER BY center_name ASC, created_at DESC
+                ORDER BY created_at DESC
             """)
             rows = [dict(r) for r in c.fetchall()]
-            return {"centers_breakdown": rows}
+            
+            c.execute("SELECT COUNT(DISTINCT member_name) as uploader_count FROM center_submissions WHERE member_name != '';")
+            uploader_count = c.fetchone()["uploader_count"]
+            
+            c.execute("SELECT COUNT(*) as total_records FROM center_submissions;")
+            total_records = c.fetchone()["total_records"]
+            
+            return {
+                "models": rows,
+                "centers_breakdown": rows,
+                "total_uploads": len(rows),
+                "total_students_uploaded": total_records,
+                "uploader_count": uploader_count
+            }
+    finally:
+        conn.close()
+
+@app.delete("/api/center-submission")
+def delete_center_submission(center_name: str, exam_model: str, member_name: str):
+    """Deletes all records for a specific model submission uploaded by a member for a center."""
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        c.execute("""
+            DELETE FROM center_submissions 
+            WHERE center_name = ? AND exam_model = ? AND member_name = ?
+        """, (center_name, exam_model, member_name))
+        deleted_count = c.rowcount
+        conn.commit()
+    finally:
+        conn.close()
+        
+    return {
+        "success": True,
+        "deleted_count": deleted_count,
+        "message": f"Deleted model '{exam_model}' by '{member_name}' in '{center_name}'."
+    }
+
+@app.get("/api/master-upload-logs")
+def get_master_upload_logs():
+    """Returns log of master database uploads with uploader name."""
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        c.execute("SELECT * FROM master_upload_logs ORDER BY id DESC LIMIT 20;")
+        logs = [dict(r) for r in c.fetchall()]
+        return {"logs": logs}
     finally:
         conn.close()
 

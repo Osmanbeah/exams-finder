@@ -873,7 +873,7 @@
 
         // Scan upload state
         const selectedCenter = ref('');
-        const uploaderName = ref('');
+        const uploaderName = ref(localStorage.getItem('exams_finder_member_name') || '');
         const scanFile = ref(null);
         const dragOver = ref(false);
         const isLoading = ref(false);
@@ -949,6 +949,9 @@
           if (!scanFile.value || !selectedCenter.value) return;
           isLoading.value = true;
           try {
+            if (uploaderName.value) {
+              try { localStorage.setItem('exams_finder_member_name', uploaderName.value); } catch(e){}
+            }
             const formData = new FormData();
             formData.append('file', scanFile.value);
             formData.append('center_name', selectedCenter.value);
