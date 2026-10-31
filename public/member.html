@@ -665,6 +665,65 @@
       </div>
     </div>
 
+    <!-- ========================================================== -->
+    <!-- UNMATCHED STUDENTS ADVISORY MODAL -->
+    <!-- ========================================================== -->
+    <div v-if="showUnmatchedPromptModal && matchResult" class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4">
+        
+        <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+          <div class="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-xl">
+            ⚠️
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-900">
+              {{ isRtl ? 'تنبيه: يوجد طلاب غير مسجلين في الداتابيز!' : 'Notice: Unregistered Students Found' }}
+            </h3>
+            <p class="text-xs text-slate-500">
+              {{ isRtl ? `يحتوي هذا الشيت على ${matchResult.summary.unmatched_count} طالب لم يتم العثور على أرقامهم في قاعدة البيانات الرئيسية.` : `This sheet contains ${matchResult.summary.unmatched_count} students whose codes were not found in the master DB.` }}
+            </p>
+          </div>
+        </div>
+
+        <div class="p-3.5 bg-slate-50 rounded-xl text-xs space-y-2 text-slate-600 border border-slate-200">
+          <p class="font-bold text-slate-800">
+            {{ isRtl ? 'لديك خياران متاحان:' : 'You have two options:' }}
+          </p>
+          <div class="flex items-start gap-2">
+            <span class="text-emerald-600 font-bold">1.</span>
+            <span>{{ isRtl ? 'حفظ النموذج الآن: سيتم حفظ درجاتهم وأرقامهم بالكامل تحت هذا السنتر دون أن تُفقد، وستظهر في تقرير السنتر المجمع في تبويب الطلاب غير المسجلين.' : 'Save Model Now: Their marks and roll numbers will be safely saved in this center without losing them, listed under "NOT in Master DB".' }}</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-indigo-600 font-bold">2.</span>
+            <span>{{ isRtl ? 'تسجيلهم أولاً: تحميل شيت القالب لمعرفة أرقامهم وإضافتهم لقاعدة البيانات في /master، ثم إعادة مطابقة الشيت.' : 'Register Them First: Download the prefilled template to get their roll numbers, add them to /master, then re-match.' }}</span>
+          </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row items-center justify-end gap-2 pt-2">
+          <button 
+            @click="showUnmatchedPromptModal = false" 
+            class="w-full sm:w-auto px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition">
+            {{ isRtl ? 'إلغاء' : 'Cancel' }}
+          </button>
+          
+          <button 
+            @click="downloadMissingTemplate(); showUnmatchedPromptModal = false" 
+            class="w-full sm:w-auto px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5">
+            <span>📥</span>
+            <span>{{ isRtl ? 'تحميل قالب الطلاب المفقودين' : 'Download Missing Template' }}</span>
+          </button>
+
+          <button 
+            @click="executeSaveModel" 
+            class="w-full sm:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow transition flex items-center justify-center gap-1.5">
+            <span>💾</span>
+            <span>{{ isRtl ? 'حفظ النموذج الآن' : 'Save Model Anyway' }}</span>
+          </button>
+        </div>
+
+      </div>
+    </div>
+
     <!-- Global Toast Notification -->
     <div v-if="toast.show" class="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl text-xs font-bold text-white transition-all transform animate-bounce"
       :class="toast.type === 'error' ? 'bg-rose-600' : 'bg-slate-900'">
@@ -706,6 +765,8 @@
         const isLoadingMergedStatus = ref(false);
         const isExportingFinal = ref(false);
         const isExportingTemplate = ref(false);
+        const showUnmatchedPromptModal = ref(false);
+        const hasConfirmedUnmatchedSave = ref(false);
         const currentModelName = ref('');
         const isSavingModel = ref(false);
         const hasSavedCurrentModel = ref(false);
@@ -772,6 +833,7 @@
             matchResult.value = data;
             currentModelName.value = data.detected_model || 'Model C';
             hasSavedCurrentModel.value = false;
+            hasConfirmedUnmatchedSave.value = false;
             activeFilter.value = 'all';
 
             if (data.summary.unmatched_count > 0) {
@@ -786,7 +848,17 @@
           }
         };
 
-        const saveCurrentModel = async () => {
+        const saveCurrentModel = () => {
+          if (!matchResult.value || !selectedCenter.value) return;
+          if (matchResult.value.summary.unmatched_count > 0 && !hasConfirmedUnmatchedSave.value) {
+            showUnmatchedPromptModal.value = true;
+          } else {
+            executeSaveModel();
+          }
+        };
+
+        const executeSaveModel = async () => {
+          showUnmatchedPromptModal.value = false;
           if (!matchResult.value || !selectedCenter.value) return;
           isSavingModel.value = true;
           try {
@@ -812,6 +884,7 @@
             if (!res.ok) throw new Error(data.detail || 'Failed to save model');
 
             hasSavedCurrentModel.value = true;
+            hasConfirmedUnmatchedSave.value = true;
             showToast(isRtl.value ? `تم حفظ ودمج النموذج ${currentModelName.value} بنجاح!` : `Model ${currentModelName.value} saved & merged successfully!`, 'success');
           } catch (err) {
             showToast(err.message, 'error');
@@ -1028,6 +1101,7 @@
           matchResult,
           toast,
           showMergedModal,
+          showUnmatchedPromptModal,
           selectedMergedCenter,
           mergedCenterData,
           isLoadingMergedStatus,
@@ -1042,6 +1116,7 @@
           handleScanFileDrop,
           runMatching,
           saveCurrentModel,
+          executeSaveModel,
           openMergedModal,
           openMergedModalWithCenter,
           fetchMergedCenterStatus,
