@@ -25,7 +25,7 @@ from excel_service import (
 
 app = FastAPI(title="Exam Student Matcher & Discrepancy Finder", version="1.0.0")
 
-# Enable CORS for local network access
+# Enable CORS for local network and web access
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -33,6 +33,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def vercel_path_rewrite_middleware(request, call_next):
+    """
+    Normalizes Vercel serverless rewritten paths.
+    When Vercel rewrites requests to /api/index.py, x-matched-path
+    contains the original browser URL requested by the user.
+    """
+    orig_path = request.headers.get("x-matched-path") or request.headers.get("x-forwarded-uri")
+    if orig_path:
+        clean_path = orig_path.split("?")[0]
+        request.scope["path"] = clean_path
+    else:
+        current_path = request.scope.get("path", "")
+        if current_path in ["/api/index.py", "/api/index", "/api", "/api/"]:
+            request.scope["path"] = "/"
+        elif current_path.startswith("/api/index.py/"):
+            request.scope["path"] = current_path[len("/api/index.py"):]
+            
+    return await call_next(request)
 
 # Initialize Database on startup
 init_db()
@@ -285,6 +305,9 @@ def get_master_students(
     return {"total": total_count, "students": students}
 
 @app.get("/", response_class=HTMLResponse)
+@app.get("/api/index.py", response_class=HTMLResponse)
+@app.get("/api", response_class=HTMLResponse)
+@app.get("/api/", response_class=HTMLResponse)
 def index_page():
     """Serves the Team Member Scanner interface by default."""
     member_path = os.path.join(STATIC_DIR, "member.html")
@@ -298,6 +321,8 @@ def index_page():
     return HTMLResponse("<h2>Exam Matcher Web App Initializing...</h2>")
 
 @app.get("/member", response_class=HTMLResponse)
+@app.get("/api/index.py/member", response_class=HTMLResponse)
+@app.get("/api/member", response_class=HTMLResponse)
 def member_page():
     """Dedicated Team Member Exam Upload & Matching page."""
     member_path = os.path.join(STATIC_DIR, "member.html")
@@ -308,6 +333,10 @@ def member_page():
 
 @app.get("/admin", response_class=HTMLResponse)
 @app.get("/master", response_class=HTMLResponse)
+@app.get("/api/index.py/master", response_class=HTMLResponse)
+@app.get("/api/index.py/admin", response_class=HTMLResponse)
+@app.get("/api/master", response_class=HTMLResponse)
+@app.get("/api/admin", response_class=HTMLResponse)
 def master_admin_page():
     """Dedicated Master Student Database Management page."""
     master_path = os.path.join(STATIC_DIR, "master.html")
