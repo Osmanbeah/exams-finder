@@ -107,17 +107,17 @@
               <!-- Center Selection -->
               <div>
                 <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                  {{ isRtl ? '1. اختر السنتر (المقر / الفرع)' : '1. Select Exam Center' }} <span class="text-rose-500">*</span>
+                  {{ isRtl ? '1. اختر سنتر الامتحان (من العمود G: اسم السنتر اللي هتمتحن فيه)' : '1. Select Exam Center (Column G: Exam Center)' }} <span class="text-rose-500">*</span>
                 </label>
                 <div class="relative">
                   <select v-model="selectedCenter" required class="w-full bg-slate-50 border border-slate-300 text-slate-900 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:bg-white transition outline-none">
-                    <option value="" disabled>{{ isRtl ? '-- اختر السنتر --' : '-- Choose Exam Center --' }}</option>
+                    <option value="" disabled>{{ isRtl ? '-- اختر سنتر الامتحان --' : '-- Choose Exam Center --' }}</option>
                     <option value="All">{{ isRtl ? '🌐 جميع السناتر (بدون تصفية)' : '🌐 All Centers (No center filter)' }}</option>
                     <option v-for="c in systemInfo.centers" :key="c" :value="c">📍 {{ c }}</option>
                   </select>
                 </div>
                 <p class="text-[11px] text-slate-400 mt-1">
-                  {{ isRtl ? 'سيتم التحقق من أن الطلاب ينتمون لهذا السنتر ورصد أي طالب من سنتر آخر' : 'Used to confirm students belong to this center and detect wrong-center attendees' }}
+                  {{ isRtl ? 'مستخرج تلقائياً من العمود G في الشيت الرئيسي لمطابقة طلاب هذا السنتر' : 'Extracted from Column G in master sheet to match students taking the exam at this center' }}
                 </p>
               </div>
 

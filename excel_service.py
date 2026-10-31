@@ -15,26 +15,30 @@ from matcher import extract_last_6_digits
 # Mapping dictionary for auto-detecting common column variations
 HEADER_ALIASES = {
     "student_number": [
-        "student number", "student_number", "student code", "student_code", "code", "id", "student id", 
-        "seat number", "seat_number", "roll no", "phone", "mobile", "رقم الطالب", "كود الطالب", 
-        "كود", "رقم الجلوس", "جلوس", "الهاتف", "موبايل", "رقم الهاتف", "الرقم التعريفي", "باركود", "barcode"
+        "رقم الطالب", "رقم طالب", "student number", "student_number", "student code", "student_code", 
+        "كود الطالب", "كود", "رقم الجلوس", "جلوس", "الهاتف", "موبايل", "رقم الهاتف", 
+        "الرقم التعريفي", "باركود", "barcode", "phone", "mobile", "id", "student id"
     ],
     "full_name": [
-        "full name", "full_name", "student name", "student_name", "name", 
-        "اسم الطالب", "الاسم", "اسم الطالب بالكامل", "الاسم ثلاثي", "الاسم رباعي"
+        "اسم الطالب", "اسم طالب", "الاسم", "اسم الطالب بالكامل", "الاسم ثلاثي", "الاسم رباعي", 
+        "full name", "full_name", "student name", "student_name", "name"
     ],
+    # Specifically prioritize Column G: "اسم السنتر اللي هتمتحن فيه" (The Exam Center)
     "center_name": [
-        "center", "center name", "center_name", "branch", "exam center", "location",
-        "السنتر", "اسم السنتر", "الفرع", "المقر", "لجنة", "اسم اللجنة"
+        "اسم السنتر اللي هتمتحن فيه", "السنتر اللي هتمتحن فيه", "هتمتحن فيه", "هتمتحن", 
+        "سنتر الامتحان", "مكان الامتحان", "exam center", "exam_center", "center to take exam",
+        "السنتر", "اسم السنتر", "الفرع", "المقر", "لجنة", "اسم اللجنة", "center", "center name", "center_name"
     ],
     "phone": [
+        "رقم ولي الامر", "ولي الامر", "تليفون ولي الامر", "موبايل ولي الامر", 
         "phone", "mobile", "tel", "phone number", "parent phone", "contact",
-        "تليفون", "هاتف", "رقم التليفون", "موبايل ولي الامر", "تليفون ولي الامر", "رقم الموبايل"
+        "تليفون", "هاتف", "رقم التليفون", "رقم الموبايل"
     ],
     "seat_number": [
         "seat", "seat number", "seat_no", "رقم الجلوس", "جلوس", "المقعد", "رقم المقعد"
     ],
     "group_name": [
+        "اسم السنتر اللي بتحضر فيه", "السنتر اللي بتحضر فيه", "بتحضر فيه", 
         "group", "group name", "batch", "class", "المجموعة", "الفصل", "الجروب", "الميعاد"
     ],
     "score": [
@@ -56,7 +60,8 @@ def identify_columns(headers: List[str]) -> Dict[str, Optional[int]]:
     """
     Given a list of header strings from an Excel/CSV file,
     match them against known semantic fields.
-    Returns mapping of field_name -> col_index.
+    Specifically prioritizes Column G (index 6) or 'اسم السنتر اللي هتمتحن فيه'
+    as the official Exam Center for dropdown list generation and matching.
     """
     mapping: Dict[str, Optional[int]] = {
         "student_number": None,
@@ -70,17 +75,54 @@ def identify_columns(headers: List[str]) -> Dict[str, Optional[int]]:
     
     cleaned_headers = [str(h).strip().lower() for h in headers]
     
+    # 1. SPECIFIC RULE FOR EXAM CENTER (COLUMN G / "اسم السنتر اللي هتمتحن فيه"):
+    # First, look for headers explicitly mentioning exam taking ("هتمتحن", "امتحان", "exam center")
+    for col_idx, h in enumerate(cleaned_headers):
+        if any(term in h for term in ["هتمتحن", "سنتر الامتحان", "مكان الامتحان", "exam center", "exam_center"]):
+            mapping["center_name"] = col_idx
+            break
+            
+    # If not found by keyword and sheet has at least 7 columns (A-G),
+    # check if Column G (index 6) contains center-related keywords
+    if mapping["center_name"] is None and len(cleaned_headers) > 6:
+        col_g = cleaned_headers[6]
+        if any(term in col_g for term in ["سنتر", "center", "مقر", "فرع", "لجنة"]) or len(col_g) > 0:
+            mapping["center_name"] = 6
+
+    # 2. MATCH OTHER FIELDS
     for field, aliases in HEADER_ALIASES.items():
+        # Skip center_name if already determined by the high-priority exam rule
+        if field == "center_name" and mapping["center_name"] is not None:
+            continue
+            
         for col_idx, h in enumerate(cleaned_headers):
             if not h:
                 continue
+            # Do not overwrite center_name column if already picked
+            if col_idx == mapping.get("center_name") and field != "center_name":
+                continue
+                
             # Exact match
             if h in aliases:
                 mapping[field] = col_idx
                 break
-            # Partial match
-            if any(alias in h for alias in aliases):
-                mapping[field] = col_idx
+                
+        # If no exact match, try partial match
+        if mapping[field] is None:
+            for col_idx, h in enumerate(cleaned_headers):
+                if not h:
+                    continue
+                if col_idx == mapping.get("center_name") and field != "center_name":
+                    continue
+                if any(alias in h for alias in aliases):
+                    mapping[field] = col_idx
+                    break
+                    
+    # Fallback for center_name if still None
+    if mapping["center_name"] is None:
+        for col_idx, h in enumerate(cleaned_headers):
+            if any(term in h for term in ["سنتر", "center", "الفرع", "المقر"]):
+                mapping["center_name"] = col_idx
                 break
                 
     return mapping
